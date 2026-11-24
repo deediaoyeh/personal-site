@@ -70,8 +70,8 @@ def read_site_config() -> dict:
             line_no_comment = re.sub(r"(?<!:)//.*$", "", line)
             cleaned_lines.append(line_no_comment)
         cleaned = "\n".join(cleaned_lines)
-        # 為未加引號的屬性名稱補上雙引號
-        cleaned = re.sub(r'(?m)^(\s*)([a-zA-Z_]\w*)\s*:', r'\1"\2":', cleaned)
+        # 為所有物件屬性名稱補上雙引號（支援單行與多行物件，同時避開字串內的冒號）
+        cleaned = re.sub(r'([{,]\s*)([a-zA-Z_]\w*)\s*:', r'\1"\2":', cleaned)
         # 移除結尾多餘逗號
         cleaned = re.sub(r",(\s*[}\]])", r"\1", cleaned)
         return json.loads(cleaned)

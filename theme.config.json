@@ -1,0 +1,14 @@
+{
+  "preset": "warm-paper",
+  "bgPaper": "#f5f2eb",
+  "bgSubtle": "#ece7dd",
+  "bgElevated": "#faf8f4",
+  "inkPrimary": "#1d1c19",
+  "inkSecondary": "#534f46",
+  "inkMuted": "#857f73",
+  "accent": "#6e5039",
+  "accentMoss": "#485643",
+  "fontSize": 16,
+  "lineHeight": 1.8,
+  "maxWidth": 980
+}

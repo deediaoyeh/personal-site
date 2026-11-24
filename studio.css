@@ -16,42 +16,49 @@
 
 /* 頂部列 */
 .studio-topbar {
-  height: 54px;
-  padding: 0 20px;
+  min-height: 52px;
+  padding: 8px 16px;
   background-color: var(--bg-subtle);
   border-bottom: 1px solid var(--rule-strong);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
+  flex-wrap: wrap;
   flex-shrink: 0;
 }
 
 .studio-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .studio-badge {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   letter-spacing: 0.08em;
-  padding: 2px 7px;
+  padding: 2px 6px;
   border: 1px solid var(--rule-strong);
   color: var(--ink-secondary);
 }
 
 .studio-title {
   font-family: "Newsreader", "Noto Serif TC", Georgia, serif;
-  font-size: 1.05rem;
+  font-size: 1rem;
   font-weight: 500;
 }
 
 .studio-status {
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   color: var(--ink-muted);
   padding-left: 8px;
   border-left: 1px solid var(--rule);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .studio-status.is-saved {
@@ -73,12 +80,13 @@
   appearance: none;
   background: transparent;
   border: 1px solid transparent;
-  padding: 6px 12px;
+  padding: 5px 10px;
   font-family: inherit;
-  font-size: 0.84rem;
+  font-size: 0.82rem;
   color: var(--ink-secondary);
   border-radius: 2px;
   cursor: pointer;
+  white-space: nowrap;
   transition: all 0.15s ease;
 }
 
@@ -103,17 +111,18 @@
 .studio-btn {
   appearance: none;
   font-family: inherit;
-  font-size: 0.83rem;
-  padding: 7px 14px;
+  font-size: 0.81rem;
+  padding: 6px 11px;
   border-radius: 2px;
   cursor: pointer;
   border: 1px solid var(--rule-strong);
   transition: all 0.15s ease;
   text-decoration: none;
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 5px;
 }
 
 .studio-btn-primary {
