@@ -1,0 +1,555 @@
+/* ==========================================================================
+   書齋離線編輯工作台樣式 (studio.css)
+   延續 Warm Craft 靜謐書齋氣質：清晰邊界、零浮誇陰影、高密度但不擁擠的編輯器體驗。
+   ========================================================================== */
+
+.studio-body {
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-paper);
+  color: var(--ink-primary);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+/* 頂部列 */
+.studio-topbar {
+  height: 54px;
+  padding: 0 20px;
+  background-color: var(--bg-subtle);
+  border-bottom: 1px solid var(--rule-strong);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.studio-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.studio-badge {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  padding: 2px 7px;
+  border: 1px solid var(--rule-strong);
+  color: var(--ink-secondary);
+}
+
+.studio-title {
+  font-family: "Newsreader", "Noto Serif TC", Georgia, serif;
+  font-size: 1.05rem;
+  font-weight: 500;
+}
+
+.studio-status {
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+  padding-left: 8px;
+  border-left: 1px solid var(--rule);
+}
+
+.studio-status.is-saved {
+  color: var(--accent-moss);
+}
+
+.studio-status.is-dirty {
+  color: var(--accent);
+}
+
+/* 模組分頁籤 */
+.studio-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.studio-tab {
+  appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 6px 12px;
+  font-family: inherit;
+  font-size: 0.84rem;
+  color: var(--ink-secondary);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.studio-tab:hover {
+  color: var(--ink-primary);
+  background-color: rgba(29, 28, 25, 0.04);
+}
+
+.studio-tab.is-active {
+  background-color: var(--bg-paper);
+  border-color: var(--rule-strong);
+  color: var(--ink-primary);
+  font-weight: 500;
+}
+
+.studio-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.studio-btn {
+  appearance: none;
+  font-family: inherit;
+  font-size: 0.83rem;
+  padding: 7px 14px;
+  border-radius: 2px;
+  cursor: pointer;
+  border: 1px solid var(--rule-strong);
+  transition: all 0.15s ease;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.studio-btn-primary {
+  background-color: var(--ink-primary);
+  border-color: var(--ink-primary);
+  color: var(--bg-paper);
+  font-weight: 500;
+}
+
+.studio-btn-primary:hover {
+  opacity: 0.88;
+}
+
+.studio-btn-ghost,
+.studio-btn-outline {
+  background-color: var(--bg-paper);
+  color: var(--ink-primary);
+}
+
+.studio-btn-ghost:hover,
+.studio-btn-outline:hover {
+  background-color: var(--bg-elevated);
+  border-color: var(--ink-primary);
+}
+
+.full-w {
+  width: 100%;
+}
+
+/* 主工作區 */
+.studio-workspace {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.studio-panel {
+  height: 100%;
+}
+
+.studio-panel[hidden] {
+  display: none;
+}
+
+/* ==========================================================================
+   Tab 1: 三欄式內容寫作台
+   ========================================================================== */
+.content-studio-grid {
+  display: grid;
+  grid-template-columns: 260px 1.15fr 1fr;
+  height: 100%;
+}
+
+.studio-sidebar {
+  border-right: 1px solid var(--rule);
+  background-color: var(--bg-subtle);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sidebar-top {
+  padding: 14px;
+  border-bottom: 1px solid var(--rule);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sidebar-filter-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.mini-filter {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--rule);
+  padding: 4px 0;
+  font-family: inherit;
+  font-size: 0.76rem;
+  color: var(--ink-secondary);
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.mini-filter.is-active {
+  background-color: var(--ink-primary);
+  border-color: var(--ink-primary);
+  color: var(--bg-paper);
+}
+
+.new-item-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+}
+
+.new-item-actions .studio-btn {
+  padding: 5px 4px;
+  font-size: 0.75rem;
+}
+
+.sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.sidebar-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--rule);
+  padding: 12px 14px;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--ink-primary);
+  transition: background-color 0.12s ease;
+}
+
+.sidebar-item:hover {
+  background-color: rgba(29, 28, 25, 0.04);
+}
+
+.sidebar-item.is-selected {
+  background-color: var(--bg-paper);
+  border-left: 3px solid var(--accent);
+}
+
+.sidebar-item-meta {
+  font-size: 0.7rem;
+  color: var(--ink-muted);
+  margin-bottom: 3px;
+}
+
+.sidebar-item-title {
+  font-family: "Newsreader", "Noto Serif TC", Georgia, serif;
+  font-size: 0.94rem;
+  font-weight: 500;
+  line-height: 1.38;
+}
+
+/* 中欄編輯器 */
+.editor-pane {
+  border-right: 1px solid var(--rule);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background-color: var(--bg-paper);
+}
+
+.meta-form-grid {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--rule);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+  background-color: var(--bg-elevated);
+}
+
+.field-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field-block[hidden] {
+  display: none;
+}
+
+.field-block.span-2 {
+  grid-column: span 2;
+}
+
+.field-label {
+  font-size: 0.74rem;
+  color: var(--ink-muted);
+  letter-spacing: 0.03em;
+}
+
+.studio-field-input {
+  width: 100%;
+  padding: 7px 10px;
+  background-color: var(--bg-paper);
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  color: var(--ink-primary);
+  font-family: inherit;
+  font-size: 0.86rem;
+  outline: none;
+}
+
+.studio-field-input:focus {
+  border-color: var(--accent);
+}
+
+.title-input {
+  font-family: "Newsreader", "Noto Serif TC", Georgia, serif;
+  font-size: 1.08rem;
+  font-weight: 500;
+}
+
+/* Markdown 工具列 */
+.md-toolbar {
+  padding: 7px 16px;
+  border-bottom: 1px solid var(--rule);
+  background-color: var(--bg-subtle);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tool-btn {
+  appearance: none;
+  background-color: var(--bg-paper);
+  border: 1px solid var(--rule);
+  padding: 3px 9px;
+  font-family: inherit;
+  font-size: 0.76rem;
+  color: var(--ink-secondary);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.tool-btn:hover {
+  border-color: var(--rule-strong);
+  color: var(--ink-primary);
+}
+
+.danger-btn {
+  margin-left: auto;
+  color: #9e3f33;
+}
+
+.danger-btn:hover {
+  border-color: #9e3f33;
+  color: #9e3f33;
+}
+
+.tool-select {
+  padding: 3px 8px;
+  font-family: inherit;
+  font-size: 0.76rem;
+  background-color: var(--bg-paper);
+  border: 1px solid var(--rule);
+  color: var(--ink-secondary);
+  border-radius: 2px;
+  max-width: 200px;
+}
+
+.md-textarea {
+  flex: 1;
+  width: 100%;
+  padding: 22px 24px;
+  border: none;
+  resize: none;
+  background-color: var(--bg-paper);
+  color: var(--ink-primary);
+  font-family: "IBM Plex Mono", "Noto Sans TC", monospace;
+  font-size: 0.93rem;
+  line-height: 1.85;
+  outline: none;
+}
+
+/* 右欄預覽 */
+.preview-pane,
+.live-site-iframe-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background-color: var(--bg-paper);
+}
+
+.preview-pane-header {
+  padding: 8px 18px;
+  border-bottom: 1px solid var(--rule);
+  background-color: var(--bg-subtle);
+  font-size: 0.72rem;
+  color: var(--ink-muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.preview-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px 36px 64px;
+}
+
+.preview-article-wrap {
+  max-width: 62ch;
+  margin: 0 auto;
+}
+
+/* ==========================================================================
+   Tab 2 / 3 / 4 / 5: 表單與全站預覽雙欄配置
+   ========================================================================== */
+.split-builder-grid,
+.sync-console-layout {
+  display: grid;
+  grid-template-columns: 480px 1fr;
+  height: 100%;
+}
+
+.form-scroll-pane {
+  border-right: 1px solid var(--rule);
+  overflow-y: auto;
+  padding: 28px 30px 64px;
+  background-color: var(--bg-elevated);
+}
+
+.pane-section-title {
+  font-size: 1.12rem;
+  font-weight: 500;
+  margin: 0 0 16px;
+}
+
+.form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.two-col-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.three-col-fields {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.pane-divider {
+  border: none;
+  border-top: 1px solid var(--rule);
+  margin: 28px 0;
+}
+
+.site-preview-iframe {
+  flex: 1;
+  width: 100%;
+  border: none;
+  background-color: var(--bg-paper);
+}
+
+/* 視覺色票卡 */
+.preset-cards-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.preset-card {
+  appearance: none;
+  text-align: left;
+  padding: 12px 14px;
+  background-color: var(--bg-paper);
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: inherit;
+  color: var(--ink-primary);
+}
+
+.preset-card:hover {
+  border-color: var(--accent);
+}
+
+.swatch-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.swatch-row i {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+}
+
+.preset-card small {
+  font-size: 0.74rem;
+  color: var(--ink-muted);
+}
+
+.color-picker {
+  width: 100%;
+  height: 36px;
+  padding: 2px;
+  border: 1px solid var(--rule-strong);
+  background: var(--bg-paper);
+  cursor: pointer;
+}
+
+/* 同步狀態區 */
+.sync-status-pane {
+  padding: 32px 40px;
+  overflow-y: auto;
+}
+
+.sync-explain {
+  max-width: 60ch;
+  color: var(--ink-secondary);
+  line-height: 1.75;
+  margin: 0 0 20px;
+}
+
+.cloud-endpoints-box {
+  padding: 16px 20px;
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--rule);
+  margin-bottom: 20px;
+  font-size: 0.82rem;
+  line-height: 1.9;
+}
+
+.sync-log-box {
+  margin-top: 20px;
+  padding: 18px 20px;
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--rule);
+  font-size: 0.82rem;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  min-height: 180px;
+}

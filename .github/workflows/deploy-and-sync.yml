@@ -1,0 +1,75 @@
+name: Sync Google Workspace, Deploy GitHub Pages & Mirror to Netlify
+
+on:
+  # 1. 主站程式碼或文章推送時自動執行
+  push:
+    branches: ["main"]
+  # 2. 排程自動同步：每 6 小時向 Google Workspace 檢查有無新文章或修訂
+  schedule:
+    - cron: "0 */6 * * *"
+  # 3. 手動同步（GitHub 網頁點選 Run workflow）
+  workflow_dispatch:
+  # 4. 手動同步（從 Google Sheets「書齋控制台」一鍵觸發）
+  repository_dispatch:
+    types: ["google_workspace_sync"]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages-and-sync"
+  cancel-in-progress: false
+
+jobs:
+  sync-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Pull from Google Workspace & rebuild manifest + RSS
+        env:
+          GOOGLE_WORKSPACE_FEED_URL: ${{ secrets.GOOGLE_WORKSPACE_FEED_URL }}
+          GOOGLE_WORKSPACE_SYNC_TOKEN: ${{ secrets.GOOGLE_WORKSPACE_SYNC_TOKEN }}
+          SITE_BASE_URL: ${{ vars.SITE_BASE_URL || 'https://example.github.io' }}
+        run: python3 scripts/build_content.py
+
+      - name: Commit synced content back to GitHub (auto-triggers Netlify mirror if connected)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add content/ rss.xml
+          if ! git diff --staged --quiet; then
+            git commit -m "chore(sync): update content & manifest from Google Workspace"
+            git push
+          fi
+
+      - name: Upload artifact for GitHub Pages (Primary Site)
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "."
+
+      - name: Notify Netlify Build Hook (Backup Site Mirror)
+        if: env.NETLIFY_BUILD_HOOK_URL != ''
+        env:
+          NETLIFY_BUILD_HOOK_URL: ${{ secrets.NETLIFY_BUILD_HOOK_URL }}
+        run: |
+          curl -fsSL -X POST -d '{}' "$NETLIFY_BUILD_HOOK_URL"
+
+  deploy-github-pages:
+    needs: sync-and-build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

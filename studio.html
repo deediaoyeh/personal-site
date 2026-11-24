@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>書齋離線工作台 · Offline Website Studio</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./theme.custom.css" />
+  <link rel="stylesheet" href="./studio.css" />
+</head>
+<body class="studio-body">
+  <!-- 頂部工作台工具列 -->
+  <header class="studio-topbar">
+    <div class="studio-brand">
+      <span class="studio-badge mono-label">OFFLINE STUDIO</span>
+      <strong class="studio-title">書齋離線編輯工作台</strong>
+      <span id="studio-status" class="studio-status">本機直寫模式 · 斷網可用</span>
+    </div>
+
+    <nav class="studio-tabs" role="tablist" aria-label="編輯模組切換">
+      <button type="button" class="studio-tab is-active" data-tab="content">1. 內容寫作台</button>
+      <button type="button" class="studio-tab" data-tab="brand">2. 門面與品牌</button>
+      <button type="button" class="studio-tab" data-tab="about">3. 關於與近況</button>
+      <button type="button" class="studio-tab" data-tab="theme">4. 視覺與字級</button>
+      <button type="button" class="studio-tab" data-tab="sync">5. 電子報與同步</button>
+    </nav>
+
+    <div class="studio-actions">
+      <a href="./" target="_blank" class="studio-btn studio-btn-ghost">預覽正式網站 ↗</a>
+      <button type="button" id="global-save-btn" class="studio-btn studio-btn-primary">儲存變更 ⌘S</button>
+    </div>
+  </header>
+
+  <!-- 主工作區 -->
+  <main class="studio-workspace">
+    <!-- ==================== Tab 1: 內容寫作台 (Markdown + 即時預覽) ==================== -->
+    <section id="tab-content" class="studio-panel is-active">
+      <div class="content-studio-grid">
+        <!-- 左欄：文章與筆記目錄 -->
+        <aside class="studio-sidebar">
+          <div class="sidebar-top">
+            <div class="sidebar-filter-row">
+              <button type="button" class="mini-filter is-active" data-filter-type="all">全部</button>
+              <button type="button" class="mini-filter" data-filter-type="essay">長文</button>
+              <button type="button" class="mini-filter" data-filter-type="note">筆記</button>
+              <button type="button" class="mini-filter" data-filter-type="letter">電子報</button>
+            </div>
+            <div class="new-item-actions">
+              <button type="button" class="studio-btn studio-btn-outline full-w" id="new-essay-btn">＋ 新增長文</button>
+              <button type="button" class="studio-btn studio-btn-outline full-w" id="new-note-btn">＋ 新增筆記</button>
+              <button type="button" class="studio-btn studio-btn-outline full-w" id="new-letter-btn">＋ 新增電子報</button>
+            </div>
+            <input type="search" id="sidebar-search" class="studio-field-input" placeholder="篩選標題或標籤⋯" />
+          </div>
+          <div id="sidebar-item-list" class="sidebar-list"></div>
+        </aside>
+
+        <!-- 中欄：結構化欄位 + Markdown 編輯器 -->
+        <div class="editor-pane">
+          <div class="meta-form-grid">
+            <label class="field-block span-2">
+              <span class="field-label">標題 (Title)</span>
+              <input type="text" id="doc-title" class="studio-field-input title-input" placeholder="輸入文章或筆記標題⋯" />
+            </label>
+
+            <label class="field-block">
+              <span class="field-label">內容類型</span>
+              <select id="doc-type" class="studio-field-input">
+                <option value="essay">深度長文 (Essay)</option>
+                <option value="note">知識筆記 (Note)</option>
+                <option value="letter">電子報期數 (Letter)</option>
+              </select>
+            </label>
+
+            <label class="field-block">
+              <span class="field-label">英文網址代稱 (Slug)</span>
+              <input type="text" id="doc-slug" class="studio-field-input mono-label" placeholder="例如 slow-writing" />
+            </label>
+
+            <label class="field-block">
+              <span class="field-label">發佈日期</span>
+              <input type="date" id="doc-date" class="studio-field-input mono-label" />
+            </label>
+
+            <label class="field-block">
+              <span class="field-label">主題標籤（逗號分隔）</span>
+              <input type="text" id="doc-tags" class="studio-field-input" placeholder="思維模型, 寫作方法" />
+            </label>
+
+            <!-- 筆記專用欄位 -->
+            <label class="field-block" id="wrap-note-stage" hidden>
+              <span class="field-label">筆記成熟度</span>
+              <select id="doc-stage" class="studio-field-input">
+                <option value="seedling">萌芽 · Seedling</option>
+                <option value="budding">整理中 · Budding</option>
+                <option value="evergreen">常青 · Evergreen</option>
+              </select>
+            </label>
+
+            <label class="field-block" id="wrap-note-code" hidden>
+              <span class="field-label">卡片編號</span>
+              <input type="text" id="doc-notecode" class="studio-field-input mono-label" placeholder="NOTE · 025" />
+            </label>
+
+            <!-- 電子報專用欄位 -->
+            <label class="field-block" id="wrap-letter-issue" hidden>
+              <span class="field-label">電子報期數 (數字)</span>
+              <input type="number" id="doc-issue" class="studio-field-input mono-label" min="1" placeholder="3" />
+            </label>
+
+            <label class="field-block span-2">
+              <span class="field-label">列表摘要 / 導言 (Summary)</span>
+              <textarea id="doc-summary" rows="2" class="studio-field-input" placeholder="一至兩句話說明核心觀點，將顯示於首頁列表與搜尋摘要⋯"></textarea>
+            </label>
+          </div>
+
+          <!-- Markdown 快捷工具列 -->
+          <div class="md-toolbar">
+            <button type="button" class="tool-btn" data-md="h2">H2 段落標</button>
+            <button type="button" class="tool-btn" data-md="h3">H3 子標</button>
+            <button type="button" class="tool-btn" data-md="bold">粗體</button>
+            <button type="button" class="tool-btn" data-md="quote">引言區塊</button>
+            <button type="button" class="tool-btn" data-md="ul">清單</button>
+            <button type="button" class="tool-btn" data-md="table">表格範本</button>
+            <button type="button" class="tool-btn" data-md="hr">分隔線</button>
+            <div class="wikilink-picker-wrap">
+              <select id="insert-wikilink-select" class="tool-select">
+                <option value="">＋ 插入館藏雙向連結 [[...]]</option>
+              </select>
+            </div>
+            <button type="button" id="delete-doc-btn" class="tool-btn danger-btn">刪除此篇</button>
+          </div>
+
+          <textarea id="doc-body" class="md-textarea" placeholder="在此以 Markdown 書寫正文⋯ 支援 [[slug|顯示名稱]] 建立雙向連結。"></textarea>
+        </div>
+
+        <!-- 右欄：即時靜謐書齋排版預覽 -->
+        <div class="preview-pane">
+          <div class="preview-pane-header mono-label">
+            <span>LIVE TYPOGRAPHY PREVIEW · 即時書齋排版預覽</span>
+            <span id="word-count-indicator">0 字</span>
+          </div>
+          <div class="preview-scroll">
+            <article class="preview-article-wrap">
+              <header class="article-header">
+                <div class="article-meta-top mono-label" id="preview-meta"></div>
+                <h1 class="article-title" id="preview-title">未命名文章</h1>
+                <p class="article-subtitle" id="preview-summary"></p>
+              </header>
+              <div class="prose" id="preview-prose"></div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== Tab 2: 門面與品牌設定 ==================== -->
+    <section id="tab-brand" class="studio-panel" hidden>
+      <div class="split-builder-grid">
+        <div class="form-scroll-pane">
+          <h2 class="pane-section-title">個人品牌署名與定位</h2>
+          <div class="form-stack">
+            <div class="two-col-fields">
+              <label class="field-block">
+                <span class="field-label">中文名字 / 品牌名</span>
+                <input type="text" id="cfg-brand-name" class="studio-field-input" />
+              </label>
+              <label class="field-block">
+                <span class="field-label">英文署名 (Latin Name)</span>
+                <input type="text" id="cfg-brand-latin" class="studio-field-input" />
+              </label>
+            </div>
+
+            <label class="field-block">
+              <span class="field-label">瀏覽器分頁標題 (Studio Title)</span>
+              <input type="text" id="cfg-brand-studiotitle" class="studio-field-input" />
+            </label>
+
+            <div class="two-col-fields">
+              <label class="field-block">
+                <span class="field-label">專業身分頭銜</span>
+                <input type="text" id="cfg-brand-role" class="studio-field-input" placeholder="例如：獨立研究者・策略顧問・寫作者" />
+              </label>
+              <label class="field-block">
+                <span class="field-label">所在城市</span>
+                <input type="text" id="cfg-brand-location" class="studio-field-input" placeholder="Taipei, Taiwan" />
+              </label>
+            </div>
+
+            <div class="two-col-fields">
+              <label class="field-block">
+                <span class="field-label">創站起始年份</span>
+                <input type="text" id="cfg-brand-since" class="studio-field-input mono-label" />
+              </label>
+              <label class="field-block">
+                <span class="field-label">聯絡 Email</span>
+                <input type="email" id="cfg-brand-email" class="studio-field-input mono-label" />
+              </label>
+            </div>
+          </div>
+
+          <hr class="pane-divider" />
+
+          <h2 class="pane-section-title">首頁門面序言與近期研究題目</h2>
+          <div class="form-stack">
+            <label class="field-block">
+              <span class="field-label">首頁開場主標 (Greeting Headline)</span>
+              <input type="text" id="cfg-intro-greeting" class="studio-field-input" />
+            </label>
+
+            <label class="field-block">
+              <span class="field-label">首頁序言段落 (Lead Paragraph)</span>
+              <textarea id="cfg-intro-lead" rows="4" class="studio-field-input"></textarea>
+            </label>
+
+            <label class="field-block">
+              <span class="field-label">近期思考題目（每行一則，顯示於首頁右上欄）</span>
+              <textarea id="cfg-intro-exploring" rows="4" class="studio-field-input" placeholder="每行輸入一則近期正在研究的問題⋯"></textarea>
+            </label>
+          </div>
+
+          <hr class="pane-divider" />
+
+          <h2 class="pane-section-title">頁尾外部連結（每行格式：名稱 | 網址）</h2>
+          <div class="form-stack">
+            <textarea id="cfg-footer-links" rows="5" class="studio-field-input mono-label" placeholder="Email | mailto:deediao@gmail.com&#10;RSS 訂閱 | ./rss.xml"></textarea>
+          </div>
+        </div>
+
+        <div class="live-site-iframe-pane">
+          <div class="preview-pane-header mono-label">
+            <span>LIVE SITE PREVIEW · 儲存後自動重新整理門面預覽</span>
+            <button type="button" class="tool-btn" data-refresh-iframe="brand-iframe">重新整理預覽</button>
+          </div>
+          <iframe id="brand-iframe" src="./#/" class="site-preview-iframe" title="首頁即時預覽"></iframe>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== Tab 3: 關於與近況 (/now) ==================== -->
+    <section id="tab-about" class="studio-panel" hidden>
+      <div class="split-builder-grid">
+        <div class="form-scroll-pane">
+          <h2 class="pane-section-title">關於頁主標與個人理念</h2>
+          <div class="form-stack">
+            <label class="field-block">
+              <span class="field-label">關於頁主標題</span>
+              <input type="text" id="cfg-about-headline" class="studio-field-input" />
+            </label>
+
+            <label class="field-block">
+              <span class="field-label">個人自述段落（以空行分隔不同段落）</span>
+              <textarea id="cfg-about-paragraphs" rows="6" class="studio-field-input"></textarea>
+            </label>
+
+            <label class="field-block">
+              <span class="field-label">寫作與研究準則（每行格式：標題 | 說明）</span>
+              <textarea id="cfg-about-principles" rows="4" class="studio-field-input"></textarea>
+            </label>
+          </div>
+
+          <hr class="pane-divider" />
+
+          <h2 class="pane-section-title">近況更新 (/now) 與代表合作項目</h2>
+          <div class="form-stack">
+            <label class="field-block">
+              <span class="field-label">近況更新月份標記</span>
+              <input type="text" id="cfg-about-nowupdated" class="studio-field-input" placeholder="2026 年 11 月" />
+            </label>
+
+            <label class="field-block">
+              <span class="field-label">/now 近況項目（每行格式：類別標籤 | 內容）</span>
+              <textarea id="cfg-about-nowitems" rows="5" class="studio-field-input"></textarea>
+            </label>
+
+            <label class="field-block">
+              <span class="field-label">代表計畫與顧問項目（每行格式：年份 | 標題 | 角色 | 說明 | 連結）</span>
+              <textarea id="cfg-about-work" rows="6" class="studio-field-input"></textarea>
+            </label>
+          </div>
+        </div>
+
+        <div class="live-site-iframe-pane">
+          <div class="preview-pane-header mono-label">
+            <span>ABOUT PAGE PREVIEW · 關於頁即時預覽</span>
+            <button type="button" class="tool-btn" data-refresh-iframe="about-iframe">重新整理預覽</button>
+          </div>
+          <iframe id="about-iframe" src="./#/about" class="site-preview-iframe" title="關於頁即時預覽"></iframe>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== Tab 4: 視覺氣質與字級微調 ==================== -->
+    <section id="tab-theme" class="studio-panel" hidden>
+      <div class="split-builder-grid">
+        <div class="form-scroll-pane">
+          <h2 class="pane-section-title">書齋紙感色票預設組（點擊立即預覽）</h2>
+          <div class="preset-cards-grid">
+            <button type="button" class="preset-card" data-preset="warm-paper">
+              <span class="swatch-row">
+                <i style="background:#f5f2eb"></i><i style="background:#1d1c19"></i><i style="background:#6e5039"></i>
+              </span>
+              <strong>手工宣紙米灰</strong>
+              <small>Warm Paper（預設）</small>
+            </button>
+
+            <button type="button" class="preset-card" data-preset="linen-slate">
+              <span class="swatch-row">
+                <i style="background:#f1f0ec"></i><i style="background:#191a1c"></i><i style="background:#3d5245"></i>
+              </span>
+              <strong>亞麻冷杉綠</strong>
+              <small>Linen & Moss</small>
+            </button>
+
+            <button type="button" class="preset-card" data-preset="classic-ivory">
+              <span class="swatch-row">
+                <i style="background:#faf7f0"></i><i style="background:#221e1a"></i><i style="background:#7d4632"></i>
+              </span>
+              <strong>古典藏書票</strong>
+              <small>Classic Ivory & Rust</small>
+            </button>
+
+            <button type="button" class="preset-card" data-preset="stone-minimal">
+              <span class="swatch-row">
+                <i style="background:#ededeb"></i><i style="background:#161616"></i><i style="background:#4a4a48"></i>
+              </span>
+              <strong>極簡清水石灰</strong>
+              <small>Monochrome Stone</small>
+            </button>
+          </div>
+
+          <hr class="pane-divider" />
+
+          <h2 class="pane-section-title">細部色彩與排版比例微調</h2>
+          <div class="form-stack">
+            <div class="three-col-fields">
+              <label class="field-block">
+                <span class="field-label">紙張底色</span>
+                <input type="color" id="thm-bg-paper" class="color-picker" />
+              </label>
+              <label class="field-block">
+                <span class="field-label">次要區塊底色</span>
+                <input type="color" id="thm-bg-subtle" class="color-picker" />
+              </label>
+              <label class="field-block">
+                <span class="field-label">主墨文字色</span>
+                <input type="color" id="thm-ink-primary" class="color-picker" />
+              </label>
+            </div>
+
+            <div class="three-col-fields">
+              <label class="field-block">
+                <span class="field-label">次要文字色</span>
+                <input type="color" id="thm-ink-secondary" class="color-picker" />
+              </label>
+              <label class="field-block">
+                <span class="field-label">主點綴色（連結/焦點）</span>
+                <input type="color" id="thm-accent" class="color-picker" />
+              </label>
+              <label class="field-block">
+                <span class="field-label">常青標記色</span>
+                <input type="color" id="thm-accent-moss" class="color-picker" />
+              </label>
+            </div>
+
+            <label class="field-block">
+              <span class="field-label">全站基準字級：<strong id="val-fontsize">16px</strong></span>
+              <input type="range" id="thm-fontsize" min="15" max="19" step="1" />
+            </label>
+
+            <label class="field-block">
+              <span class="field-label">內文閱讀行高：<strong id="val-lineheight">1.8</strong></span>
+              <input type="range" id="thm-lineheight" min="1.65" max="2.05" step="0.05" />
+            </label>
+
+            <label class="field-block">
+              <span class="field-label">版面最大寬度：<strong id="val-maxwidth">980px</strong></span>
+              <input type="range" id="thm-maxwidth" min="840" max="1140" step="20" />
+            </label>
+          </div>
+        </div>
+
+        <div class="live-site-iframe-pane">
+          <div class="preview-pane-header mono-label">
+            <span>THEME PREVIEW · 按「儲存變更 ⌘S」即套用至全站</span>
+            <button type="button" class="tool-btn" data-refresh-iframe="theme-iframe">重新整理預覽</button>
+          </div>
+          <iframe id="theme-iframe" src="./#/" class="site-preview-iframe" title="主題即時預覽"></iframe>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== Tab 5: 電子報與雲端同步控制台 ==================== -->
+    <section id="tab-sync" class="studio-panel" hidden>
+      <div class="sync-console-layout">
+        <div class="form-scroll-pane">
+          <h2 class="pane-section-title">電子報訂閱匣設定</h2>
+          <div class="form-stack">
+            <div class="two-col-fields">
+              <label class="field-block">
+                <span class="field-label">電子報名稱</span>
+                <input type="text" id="cfg-nl-title" class="studio-field-input" />
+              </label>
+              <label class="field-block">
+                <span class="field-label">發送頻率標記</span>
+                <input type="text" id="cfg-nl-frequency" class="studio-field-input" />
+              </label>
+            </div>
+
+            <label class="field-block">
+              <span class="field-label">對讀者的承諾說明</span>
+              <textarea id="cfg-nl-promise" rows="3" class="studio-field-input"></textarea>
+            </label>
+
+            <div class="two-col-fields">
+              <label class="field-block">
+                <span class="field-label">輸入框提示字</span>
+                <input type="text" id="cfg-nl-placeholder" class="studio-field-input" />
+              </label>
+              <label class="field-block">
+                <span class="field-label">訂閱按鈕文字</span>
+                <input type="text" id="cfg-nl-buttontext" class="studio-field-input" />
+              </label>
+            </div>
+
+            <label class="field-block">
+              <span class="field-label">Google Apps Script 網頁應用程式網址（留空時為本機測試模式）</span>
+              <input type="url" id="cfg-nl-scripturl" class="studio-field-input mono-label" placeholder="https://script.google.com/macros/s/.../exec" />
+            </label>
+          </div>
+        </div>
+
+        <div class="sync-status-pane">
+          <h2 class="pane-section-title">離線儲存與雲端同步中心</h2>
+          <p class="sync-explain">
+            平時斷網或在本機創作時，按右上角「儲存變更」就會直接更新本機網站所有檔案。當你連上網路、準備把最新成果備份並發佈出去時，點擊下方按鈕即可一次同步至 **Google Drive 儲存空間 (`PersonalSite-Vault`)**、**GitHub 主站** 與 **Netlify 備份站 (`deediao-studio.netlify.app`)**。
+          </p>
+
+          <div class="cloud-endpoints-box mono-label">
+            <div>Google Drive Vault ID: <strong>1n_ZQELr2H9f1Zre0rmntedtvyrohcGxS</strong></div>
+            <div>Netlify 備份站網址: <strong>https://deediao-studio.netlify.app</strong></div>
+            <div>本機未提交變更數: <strong id="git-changed-count">檢查中⋯</strong></div>
+          </div>
+
+          <button type="button" id="run-cloud-sync-btn" class="studio-btn studio-btn-primary" style="padding:12px 22px; font-size:0.95rem;">
+            立即執行雲端同步（Google Drive + Git + Netlify）
+          </button>
+
+          <pre id="sync-log-output" class="sync-log-box">準備就緒。離線編輯可隨時透過 ⌘S 存檔，連網時再點擊上方按鈕同步即可。</pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="./studio.js"></script>
+</body>
+</html>

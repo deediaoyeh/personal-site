@@ -1,0 +1,22 @@
+/* 由「書齋離線編輯工作台 (studio.html)」自動產生與管理，可隨時於編輯器中調整視覺氣質 */
+:root,
+[data-theme="paper"] {
+  --bg-paper: #f5f2eb;
+  --bg-subtle: #ece7dd;
+  --bg-elevated: #faf8f4;
+  --ink-primary: #1d1c19;
+  --ink-secondary: #534f46;
+  --ink-muted: #857f73;
+  --accent: #6e5039;
+  --accent-hover: #4f3826;
+  --accent-moss: #485643;
+}
+
+body {
+  font-size: 16px;
+  line-height: 1.8;
+}
+
+.site-shell {
+  max-width: 980px;
+}

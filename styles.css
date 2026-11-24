@@ -1,0 +1,1233 @@
+/* ==========================================================================
+   靜謐書齋設計系統 (Warm Craft Design System)
+   原則：無漸層、無陰影、無毛玻璃、無浮誇圓角；以紙感色階、字體比例與髮絲細線建立秩序。
+   ========================================================================== */
+
+:root,
+[data-theme="paper"] {
+  --bg-paper: #f5f2eb;
+  --bg-subtle: #ece7dd;
+  --bg-elevated: #faf8f4;
+  --ink-primary: #1d1c19;
+  --ink-secondary: #534f46;
+  --ink-muted: #857f73;
+  --accent: #6e5039;
+  --accent-hover: #4f3826;
+  --accent-moss: #485643;
+  --rule: rgba(29, 28, 25, 0.13);
+  --rule-strong: rgba(29, 28, 25, 0.28);
+  --overlay: rgba(24, 23, 20, 0.45);
+  --selection-bg: rgba(110, 80, 57, 0.16);
+}
+
+[data-theme="night"] {
+  --bg-paper: #171614;
+  --bg-subtle: #201f1c;
+  --bg-elevated: #1c1b18;
+  --ink-primary: #e8e3d8;
+  --ink-secondary: #b0aa9e;
+  --ink-muted: #7d786d;
+  --accent: #c49e7e;
+  --accent-hover: #dab99c;
+  --accent-moss: #8fa387;
+  --rule: rgba(232, 227, 216, 0.12);
+  --rule-strong: rgba(232, 227, 216, 0.28);
+  --overlay: rgba(8, 8, 7, 0.72);
+  --selection-bg: rgba(196, 158, 126, 0.22);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: var(--selection-bg);
+  color: var(--ink-primary);
+}
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg-paper);
+  color: var(--ink-primary);
+  font-family: "Inter", "Noto Sans TC", "PingFang TC", "Hiragino Sans CNS", sans-serif;
+  font-weight: 400;
+  line-height: 1.8;
+  letter-spacing: 0.012em;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* 字體家族工具 */
+.serif,
+h1,
+h2,
+h3,
+.brand-name,
+.editorial-lead {
+  font-family: "Newsreader", "Noto Serif TC", "Songti TC", "PMingLiU", Georgia, serif;
+}
+
+.mono-label,
+.meta-date,
+.kbd-hint,
+.issue-num,
+code,
+pre {
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* 頂部閱讀進度線 */
+.reading-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 2px;
+  width: 0%;
+  background-color: var(--accent);
+  z-index: 100;
+  transition: width 0.08s linear;
+}
+
+/* 主版面外框 */
+.site-shell {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 0 28px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ==========================================================================
+   Header & Navigation
+   ========================================================================== */
+.site-header {
+  padding: 32px 0 22px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.header-inner {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.brand-mark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  transition: opacity 0.15s ease;
+}
+
+.brand-mark:hover {
+  opacity: 0.75;
+}
+
+.brand-name {
+  font-size: 1.28rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+}
+
+.brand-sep {
+  color: var(--ink-muted);
+  font-weight: 300;
+}
+
+.brand-sub {
+  font-family: "Newsreader", Georgia, serif;
+  font-style: italic;
+  font-size: 0.98rem;
+  color: var(--ink-muted);
+  letter-spacing: 0.02em;
+}
+
+.primary-nav {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  flex-wrap: wrap;
+}
+
+.nav-link {
+  font-size: 0.92rem;
+  color: var(--ink-secondary);
+  padding: 4px 0;
+  position: relative;
+  transition: color 0.15s ease;
+}
+
+.nav-link:hover,
+.nav-link.is-active {
+  color: var(--ink-primary);
+}
+
+.nav-link.is-active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 1px;
+  background-color: var(--ink-primary);
+}
+
+.icon-action,
+.theme-toggle {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--rule);
+  color: var(--ink-secondary);
+  font-family: inherit;
+  font-size: 0.82rem;
+  padding: 4px 10px;
+  border-radius: 2px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+.icon-action:hover,
+.theme-toggle:hover {
+  border-color: var(--rule-strong);
+  color: var(--ink-primary);
+  background-color: var(--bg-subtle);
+}
+
+.kbd-hint {
+  font-size: 0.72rem;
+  color: var(--ink-muted);
+}
+
+/* ==========================================================================
+   Main Content Layout
+   ========================================================================== */
+.site-main {
+  flex: 1;
+  padding: 56px 0 84px;
+  outline: none;
+}
+
+.loading-state {
+  padding: 64px 0;
+  color: var(--ink-muted);
+  font-size: 0.94rem;
+}
+
+/* 區段共用標頭 */
+.section-kicker {
+  display: block;
+  font-size: 0.74rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin-bottom: 12px;
+}
+
+.page-header {
+  padding-bottom: 36px;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 40px;
+}
+
+.page-title {
+  font-size: clamp(1.85rem, 3.2vw, 2.45rem);
+  font-weight: 500;
+  line-height: 1.32;
+  margin: 0 0 14px;
+  letter-spacing: 0.02em;
+}
+
+.page-desc {
+  max-width: 62ch;
+  color: var(--ink-secondary);
+  font-size: 1rem;
+  margin: 0;
+  line-height: 1.8;
+}
+
+/* ==========================================================================
+   Home View (書齋門面)
+   ========================================================================== */
+.home-intro-grid {
+  display: grid;
+  grid-template-columns: 1.55fr 1fr;
+  gap: 56px;
+  padding-bottom: 52px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.home-role-line {
+  font-size: 0.84rem;
+  color: var(--ink-muted);
+  letter-spacing: 0.06em;
+  margin-bottom: 16px;
+}
+
+.home-headline {
+  font-size: clamp(1.75rem, 3vw, 2.3rem);
+  font-weight: 500;
+  line-height: 1.38;
+  margin: 0 0 20px;
+  letter-spacing: 0.02em;
+}
+
+.home-lead {
+  color: var(--ink-secondary);
+  font-size: 1rem;
+  line-height: 1.88;
+  margin: 0 0 24px;
+}
+
+.home-more-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--accent);
+  border-bottom: 1px solid var(--accent);
+  padding-bottom: 2px;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.home-more-link:hover {
+  color: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+/* 右欄：近期關注與索引摘要 */
+.home-desk-panel {
+  border-left: 1px solid var(--rule);
+  padding-left: 36px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 28px;
+}
+
+.exploring-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.exploring-list li {
+  position: relative;
+  padding: 9px 0 9px 18px;
+  font-size: 0.91rem;
+  color: var(--ink-secondary);
+  line-height: 1.65;
+  border-bottom: 1px dashed var(--rule);
+}
+
+.exploring-list li:last-child {
+  border-bottom: none;
+}
+
+.exploring-list li::before {
+  content: "—";
+  position: absolute;
+  left: 0;
+  color: var(--ink-muted);
+}
+
+.archive-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  padding-top: 18px;
+  border-top: 1px solid var(--rule);
+}
+
+.metric-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metric-num {
+  font-family: "Newsreader", Georgia, serif;
+  font-size: 1.45rem;
+  font-weight: 400;
+  color: var(--ink-primary);
+  line-height: 1.2;
+}
+
+.metric-label {
+  font-size: 0.76rem;
+  color: var(--ink-muted);
+}
+
+/* 區段標題列 */
+.home-section {
+  padding: 50px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.home-section:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.section-header-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  gap: 16px;
+}
+
+.section-heading {
+  font-size: 1.25rem;
+  font-weight: 500;
+  margin: 0;
+  letter-spacing: 0.03em;
+}
+
+.section-all-link {
+  font-size: 0.86rem;
+  color: var(--ink-muted);
+  border-bottom: 1px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.section-all-link:hover {
+  color: var(--ink-primary);
+  border-color: var(--ink-primary);
+}
+
+/* ==========================================================================
+   Essays List (目錄式排版，乾淨俐落)
+   ========================================================================== */
+.essay-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.essay-row {
+  display: grid;
+  grid-template-columns: 112px 1fr auto;
+  gap: 24px;
+  align-items: baseline;
+  padding: 22px 0;
+  border-top: 1px solid var(--rule);
+  transition: opacity 0.15s ease;
+}
+
+.essay-row:first-child {
+  border-top: 1px solid var(--rule);
+}
+
+.essay-row:hover .essay-row-title {
+  color: var(--accent);
+}
+
+.meta-date {
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+  letter-spacing: 0.03em;
+}
+
+.essay-row-main {
+  min-width: 0;
+}
+
+.essay-row-title {
+  font-family: "Newsreader", "Noto Serif TC", Georgia, serif;
+  font-size: 1.2rem;
+  font-weight: 500;
+  line-height: 1.45;
+  margin: 0 0 6px;
+  color: var(--ink-primary);
+  transition: color 0.15s ease;
+}
+
+.essay-row-summary {
+  margin: 0;
+  font-size: 0.93rem;
+  color: var(--ink-secondary);
+  line-height: 1.72;
+}
+
+.essay-row-meta {
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* 分類篩選列 */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 32px;
+}
+
+.filter-chip {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--rule);
+  color: var(--ink-secondary);
+  padding: 5px 13px;
+  font-family: inherit;
+  font-size: 0.83rem;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.filter-chip:hover {
+  border-color: var(--rule-strong);
+  color: var(--ink-primary);
+}
+
+.filter-chip.is-active {
+  background-color: var(--ink-primary);
+  border-color: var(--ink-primary);
+  color: var(--bg-paper);
+}
+
+/* ==========================================================================
+   Notes / Digital Garden Cards (無陰影細線卡片)
+   ========================================================================== */
+.notes-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.note-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 24px 26px;
+  border: 1px solid var(--rule);
+  background-color: transparent;
+  transition: border-color 0.18s ease, background-color 0.18s ease;
+}
+
+.note-card:hover {
+  border-color: var(--rule-strong);
+  background-color: var(--bg-elevated);
+}
+
+.note-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.note-id {
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+  letter-spacing: 0.06em;
+}
+
+.note-stage {
+  font-size: 0.73rem;
+  padding: 1px 7px;
+  border: 1px solid var(--rule);
+  color: var(--ink-secondary);
+  letter-spacing: 0.04em;
+}
+
+.note-stage[data-stage="evergreen"] {
+  border-color: var(--accent-moss);
+  color: var(--accent-moss);
+}
+
+.note-stage[data-stage="budding"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.note-card-title {
+  font-family: "Newsreader", "Noto Serif TC", Georgia, serif;
+  font-size: 1.12rem;
+  font-weight: 500;
+  margin: 0 0 10px;
+  line-height: 1.45;
+}
+
+.note-card-excerpt {
+  font-size: 0.91rem;
+  color: var(--ink-secondary);
+  margin: 0 0 18px;
+  line-height: 1.74;
+}
+
+.note-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+  padding-top: 12px;
+  border-top: 1px dashed var(--rule);
+}
+
+.tag-list-inline {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tag-item {
+  font-size: 0.76rem;
+  color: var(--ink-muted);
+}
+
+/* ==========================================================================
+   Newsletter Subscription Box (書頁夾卡質感)
+   ========================================================================== */
+.newsletter-panel {
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--rule);
+  padding: 40px 44px;
+  margin-top: 12px;
+}
+
+.newsletter-panel-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 40px;
+  align-items: center;
+}
+
+.newsletter-title {
+  font-size: 1.42rem;
+  font-weight: 500;
+  margin: 0 0 10px;
+  letter-spacing: 0.02em;
+}
+
+.newsletter-promise {
+  margin: 0;
+  font-size: 0.93rem;
+  color: var(--ink-secondary);
+  line-height: 1.78;
+}
+
+.newsletter-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.newsletter-input-group {
+  display: flex;
+  gap: 8px;
+}
+
+.newsletter-input {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 14px;
+  background-color: var(--bg-paper);
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  color: var(--ink-primary);
+  font-family: inherit;
+  font-size: 0.92rem;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.newsletter-input:focus {
+  border-color: var(--accent);
+}
+
+.newsletter-submit {
+  padding: 11px 20px;
+  background-color: var(--ink-primary);
+  color: var(--bg-paper);
+  border: 1px solid var(--ink-primary);
+  border-radius: 2px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s ease;
+}
+
+.newsletter-submit:hover {
+  opacity: 0.86;
+}
+
+.newsletter-submit:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.newsletter-feedback {
+  font-size: 0.82rem;
+  line-height: 1.55;
+  min-height: 1.2em;
+  color: var(--ink-muted);
+}
+
+.newsletter-feedback.is-success {
+  color: var(--accent-moss);
+}
+
+.newsletter-feedback.is-error {
+  color: #9e3f33;
+}
+
+/* ==========================================================================
+   Article / Note / Letter Reader View
+   ========================================================================== */
+.reader-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 66ch) 210px;
+  gap: 64px;
+  align-items: start;
+}
+
+.reader-layout.is-single-col {
+  grid-template-columns: minmax(0, 66ch);
+}
+
+.back-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+  margin-bottom: 28px;
+  transition: color 0.15s ease;
+}
+
+.back-nav-link:hover {
+  color: var(--ink-primary);
+}
+
+.article-header {
+  padding-bottom: 28px;
+  margin-bottom: 36px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.article-meta-top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+}
+
+.article-title {
+  font-size: clamp(1.75rem, 3.2vw, 2.35rem);
+  font-weight: 500;
+  line-height: 1.36;
+  margin: 0 0 16px;
+  letter-spacing: 0.015em;
+}
+
+.article-subtitle {
+  font-size: 1.05rem;
+  color: var(--ink-secondary);
+  line-height: 1.75;
+  margin: 0;
+}
+
+/* 文章目錄側欄 */
+.reader-toc {
+  position: sticky;
+  top: 40px;
+  border-left: 1px solid var(--rule);
+  padding-left: 20px;
+}
+
+.toc-title {
+  font-size: 0.73rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin: 0 0 12px;
+}
+
+.toc-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.toc-link {
+  font-size: 0.83rem;
+  color: var(--ink-muted);
+  line-height: 1.5;
+  display: block;
+  transition: color 0.15s ease;
+}
+
+.toc-link:hover {
+  color: var(--ink-primary);
+}
+
+.toc-link.toc-level-3 {
+  padding-left: 12px;
+  font-size: 0.79rem;
+}
+
+/* 正文排版 (Prose) */
+.prose {
+  font-size: 1.03rem;
+  line-height: 1.92;
+  color: var(--ink-primary);
+}
+
+.prose p {
+  margin: 0 0 1.55em;
+}
+
+.prose h2 {
+  font-size: 1.42rem;
+  font-weight: 500;
+  margin: 2.3em 0 0.8em;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+}
+
+.prose h3 {
+  font-size: 1.16rem;
+  font-weight: 500;
+  margin: 1.9em 0 0.65em;
+  line-height: 1.45;
+}
+
+.prose ul,
+.prose ol {
+  margin: 0 0 1.6em;
+  padding-left: 1.4em;
+}
+
+.prose li {
+  margin-bottom: 0.55em;
+}
+
+.prose strong {
+  font-weight: 500;
+  color: var(--ink-primary);
+}
+
+.prose a {
+  color: var(--accent);
+  border-bottom: 1px solid var(--accent);
+  padding-bottom: 1px;
+  transition: color 0.15s ease;
+}
+
+.prose a:hover {
+  color: var(--accent-hover);
+}
+
+.prose a.wikilink {
+  background-color: var(--bg-subtle);
+  padding: 1px 6px;
+  border-bottom: 1px dashed var(--accent);
+  font-size: 0.95em;
+}
+
+.prose blockquote {
+  margin: 2em 0;
+  padding: 6px 0 6px 22px;
+  border-left: 2px solid var(--accent);
+  color: var(--ink-secondary);
+  font-family: "Newsreader", "Noto Serif TC", Georgia, serif;
+  font-size: 1.06rem;
+  line-height: 1.85;
+}
+
+.prose blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+.prose hr {
+  border: none;
+  text-align: center;
+  margin: 2.8em 0;
+}
+
+.prose hr::before {
+  content: "· · ·";
+  color: var(--ink-muted);
+  letter-spacing: 0.6em;
+  font-size: 0.9rem;
+}
+
+.prose code {
+  font-size: 0.87em;
+  background-color: var(--bg-subtle);
+  padding: 2px 6px;
+  border-radius: 2px;
+}
+
+.prose pre {
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--rule);
+  padding: 18px 20px;
+  overflow-x: auto;
+  margin: 1.8em 0;
+  line-height: 1.65;
+  font-size: 0.86rem;
+}
+
+.prose pre code {
+  background: none;
+  padding: 0;
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 2em 0;
+  font-size: 0.92rem;
+}
+
+.prose th,
+.prose td {
+  text-align: left;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.prose th {
+  font-weight: 500;
+  color: var(--ink-secondary);
+  border-bottom: 1px solid var(--rule-strong);
+}
+
+/* 雙向連結區 (Backlinks) */
+.backlinks-box {
+  margin-top: 56px;
+  padding-top: 28px;
+  border-top: 1px solid var(--rule);
+}
+
+.backlinks-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.backlink-card {
+  display: block;
+  padding: 16px 18px;
+  border: 1px solid var(--rule);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.backlink-card:hover {
+  border-color: var(--rule-strong);
+  background-color: var(--bg-elevated);
+}
+
+.backlink-type {
+  font-size: 0.72rem;
+  color: var(--ink-muted);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.backlink-title {
+  font-family: "Newsreader", "Noto Serif TC", Georgia, serif;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+/* ==========================================================================
+   Newsletter Archive & About Views
+   ========================================================================== */
+.issue-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 110px;
+  gap: 24px;
+  align-items: baseline;
+  padding: 22px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.issue-row:first-child {
+  border-top: 1px solid var(--rule);
+}
+
+.issue-num {
+  font-size: 0.8rem;
+  color: var(--accent);
+  letter-spacing: 0.05em;
+}
+
+.issue-row:hover .essay-row-title {
+  color: var(--accent);
+}
+
+/* About 頁雙欄與原則區 */
+.about-prose {
+  max-width: 64ch;
+  margin-bottom: 52px;
+}
+
+.principles-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  padding: 36px 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 52px;
+}
+
+.principle-item h3 {
+  font-size: 1.08rem;
+  font-weight: 500;
+  margin: 0 0 8px;
+}
+
+.principle-item p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--ink-secondary);
+  line-height: 1.72;
+}
+
+.now-list,
+.work-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.now-row,
+.work-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 24px;
+  padding: 18px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.now-label {
+  font-size: 0.84rem;
+  color: var(--ink-muted);
+}
+
+/* ==========================================================================
+   Footer
+   ========================================================================== */
+.site-footer {
+  padding: 32px 0 48px;
+  border-top: 1px solid var(--rule);
+  font-size: 0.84rem;
+  color: var(--ink-muted);
+}
+
+.footer-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.footer-colophon {
+  margin: 0;
+}
+
+.footer-links {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.footer-links a {
+  color: var(--ink-secondary);
+  transition: color 0.15s ease;
+}
+
+.footer-links a:hover {
+  color: var(--ink-primary);
+}
+
+/* ==========================================================================
+   Search Dialog
+   ========================================================================== */
+.search-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: var(--overlay);
+  z-index: 200;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 10vh 20px 20px;
+}
+
+.search-overlay[hidden] {
+  display: none;
+}
+
+.search-dialog {
+  width: 100%;
+  max-width: 600px;
+  background-color: var(--bg-paper);
+  border: 1px solid var(--rule-strong);
+  padding: 24px 28px;
+}
+
+.search-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.text-close-btn {
+  appearance: none;
+  background: none;
+  border: none;
+  color: var(--ink-muted);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.76rem;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.text-close-btn:hover {
+  color: var(--ink-primary);
+}
+
+.search-input {
+  width: 100%;
+  padding: 12px 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--rule-strong);
+  color: var(--ink-primary);
+  font-family: inherit;
+  font-size: 1.05rem;
+  outline: none;
+}
+
+.search-input:focus {
+  border-bottom-color: var(--accent);
+}
+
+.search-results {
+  max-height: 52vh;
+  overflow-y: auto;
+  margin-top: 12px;
+}
+
+.search-hit {
+  display: block;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.search-hit:last-child {
+  border-bottom: none;
+}
+
+.search-hit:hover .search-hit-title {
+  color: var(--accent);
+}
+
+.search-hit-meta {
+  font-size: 0.74rem;
+  color: var(--ink-muted);
+  margin-bottom: 3px;
+}
+
+.search-hit-title {
+  font-family: "Newsreader", "Noto Serif TC", Georgia, serif;
+  font-size: 1.04rem;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.search-hit-desc {
+  font-size: 0.85rem;
+  color: var(--ink-secondary);
+}
+
+/* ==========================================================================
+   Responsive Design
+   ========================================================================== */
+@media (max-width: 820px) {
+  .home-intro-grid,
+  .newsletter-panel-grid,
+  .reader-layout {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+
+  .home-desk-panel {
+    border-left: none;
+    border-top: 1px solid var(--rule);
+    padding-left: 0;
+    padding-top: 28px;
+  }
+
+  .reader-toc {
+    display: none;
+  }
+
+  .notes-grid,
+  .principles-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .essay-row,
+  .issue-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .essay-row-meta {
+    text-align: left;
+  }
+
+  .newsletter-panel {
+    padding: 28px 24px;
+  }
+
+  .newsletter-input-group {
+    flex-direction: column;
+  }
+
+  .now-row,
+  .work-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+}
