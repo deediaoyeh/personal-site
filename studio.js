@@ -704,9 +704,61 @@
     const out = [];
     let inCode = false;
     let codeBuf = [];
+    let listType = null;
+    let listBuf = [];
+    let quoteBuf = [];
+    let tableBuf = [];
+    let paraBuf = [];
+
+    const flushPara = () => {
+      if (paraBuf.length) {
+        out.push(`<p>${inlineFmt(paraBuf.join(" "))}</p>`);
+        paraBuf = [];
+      }
+    };
+    const flushList = () => {
+      if (listBuf.length) {
+        out.push(`<${listType}>${listBuf.map((li) => `<li>${inlineFmt(li)}</li>`).join("")}</${listType}>`);
+        listBuf = [];
+        listType = null;
+      }
+    };
+    const flushQuote = () => {
+      if (quoteBuf.length) {
+        out.push(`<blockquote><p>${inlineFmt(quoteBuf.join(" "))}</p></blockquote>`);
+        quoteBuf = [];
+      }
+    };
+    const flushTable = () => {
+      if (tableBuf.length >= 2) {
+        const parseRow = (r) => {
+          const safe = r.replace(/\[\[([^\]]*?)\|([^\]]*?)\]\]/g, "[[$1\u0000$2]]");
+          return safe
+            .trim()
+            .replace(/^\||\|$/g, "")
+            .split("|")
+            .map((c) => c.trim().replace(/\u0000/g, "|"));
+        };
+        const headers = parseRow(tableBuf[0]);
+        const rows = tableBuf.slice(2).map(parseRow);
+        out.push(
+          `<table><thead><tr>${headers.map((h) => `<th>${inlineFmt(h)}</th>`).join("")}</tr></thead><tbody>${rows
+            .map((r) => `<tr>${r.map((c) => `<td>${inlineFmt(c)}</td>`).join("")}</tr>`)
+            .join("")}</tbody></table>`
+        );
+      }
+      tableBuf = [];
+    };
+    const flushAll = () => {
+      flushPara();
+      flushList();
+      flushQuote();
+      flushTable();
+    };
 
     for (const line of lines) {
       if (line.trim().startsWith("```")) {
+        flushAll();
         if (!inCode) {
           inCode = true;
           codeBuf = [];
@@ -721,21 +773,51 @@
         continue;
       }
       const t = line.trim();
-      if (!t) continue;
-      if (/^(---|\*\*\*)$/.test(t)) {
+      if (!t) {
+        flushAll();
+        continue;
+      }
+      if (t.startsWith("|") && t.endsWith("|")) {
+        flushPara();
+        flushList();
+        flushQuote();
+        tableBuf.push(t);
+        continue;
+      } else if (tableBuf.length) {
+        flushTable();
+      }
+      if (/^(---|\*\*\*|___)$/.test(t)) {
+        flushAll();
         out.push("<hr />");
       } else if (t.startsWith("### ")) {
+        flushAll();
         out.push(`<h3>${inlineFmt(t.slice(4))}</h3>`);
       } else if (t.startsWith("## ") || t.startsWith("# ")) {
+        flushAll();
         out.push(`<h2>${inlineFmt(t.replace(/^#+\s+/, ""))}</h2>`);
       } else if (t.startsWith(">")) {
-        out.push(`<blockquote><p>${inlineFmt(t.replace(/^>\s?/, ""))}</p></blockquote>`);
-      } else if (t.startsWith("- ") || t.startsWith("* ")) {
-        out.push(`<ul><li>${inlineFmt(t.slice(2))}</li></ul>`);
+        flushPara();
+        flushList();
+        quoteBuf.push(t.replace(/^>\s?/, ""));
+      } else if (/^[-*]\s+/.test(t)) {
+        flushPara();
+        flushQuote();
+        if (listType && listType !== "ul") flushList();
+        listType = "ul";
+        listBuf.push(t.replace(/^[-*]\s+/, ""));
+      } else if (/^\d+\.\s+/.test(t)) {
+        flushPara();
+        flushQuote();
+        if (listType && listType !== "ol") flushList();
+        listType = "ol";
+        listBuf.push(t.replace(/^\d+\.\s+/, ""));
       } else {
-        out.push(`<p>${inlineFmt(t)}</p>`);
+        if (quoteBuf.length) flushQuote();
+        if (listBuf.length) flushList();
+        paraBuf.push(t);
       }
     }
+    flushAll();
     return out.join("\n");
   }
 

@@ -3,11 +3,11 @@ title: 為什麼知識工作者需要「慢速寫作」：從囤積資訊到建�
 slug: slow-writing-and-judgment
 type: essay
 date: 2026-11-18
-readingTime: 7 min
 tags: 思維模型, 寫作方法, 知識管理
 links: note-collector-fallacy, note-evergreen-criteria
 summary: 當摘要與整理都能在一秒內由工具代勞，「收集資料」本身已不再構成護城河。真正拉開差距的，是你能否透過書寫完成推理閉環。
 ---
+
 
 過去兩年，幾乎所有知識工作者都經歷了一場工具焦慮：剪藏外掛越來越聰明、語音轉逐字稿幾乎零誤差、長文摘要只需要三秒鐘。我們的雲端資料夾塞滿了「之後要讀」的報告，但每當面對真正棘手的商業決策或策略提案時，腦中卻依然一片空白。
 

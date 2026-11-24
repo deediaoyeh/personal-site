@@ -82,3 +82,7 @@
    - `start-studio.command`：啟動本機服務並直接開啟離線編輯工作台。
    - `sync.command`：終端機一鍵執行雲端同步。
 4. **初始化本機獨立 Git 版本庫**：於 `personal-site/` 內完成 `git init -b main` 與首次完整版本提交（Initial Commit），讓離線編輯器的變更追蹤立即可用。
+5. **實機端對端驗證完成（2026-11-25 07:26–07:29）**：
+   - 修正 `server.py` 單行物件屬性解析與 `studio.js` 即時預覽完整表格／有序清單／引言渲染。
+   - 驗證五大工作台分頁（`內容寫作`、`門面品牌`、`關於近況`、`視覺字級`、`電子報與同步`）、即時全站預覽 iframe 與 `POST /api/studio/item` 寫檔重建索引全數通過（HTTP 200，零 Console 錯誤），並將最新 `BUILD_LOG.md`（雲端檔案 ID：`1dOqOZPfY-BiwekE-Qczu-bYjeb-YRzAd`）同步更新至 Google Drive。
+
