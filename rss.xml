@@ -2,69 +2,69 @@
 <rss version="2.0">
   <channel>
     <title>澄觀書齋 · 個人知識庫與電子報</title>
-    <link>https://example.github.io</link>
+    <link>https://deediaoyeh.github.io/personal-site</link>
     <description>在資訊過載的時代，慢下來拆解複雜問題、累積可複用的思維模型。</description>
     <language>zh-TW</language>
     <item>
       <title>為什麼知識工作者需要「慢速寫作」：從囤積資訊到建立可複用的判斷力</title>
-      <link>https://example.github.io/#/essays/slow-writing-and-judgment</link>
-      <guid>https://example.github.io/#/essays/slow-writing-and-judgment</guid>
+      <link>https://deediaoyeh.github.io/personal-site/#/essays/slow-writing-and-judgment</link>
+      <guid>https://deediaoyeh.github.io/personal-site/#/essays/slow-writing-and-judgment</guid>
       <pubDate>2026-11-18</pubDate>
       <description>當摘要與整理都能在一秒內由工具代勞，「收集資料」本身已不再構成護城河。真正拉開差距的，是你能否透過書寫完成推理閉環。</description>
     </item>
     <item>
       <title>好問題的品質，決定了研究的上限</title>
-      <link>https://example.github.io/#/letters/issue-02-good-questions</link>
-      <guid>https://example.github.io/#/letters/issue-02-good-questions</guid>
+      <link>https://deediaoyeh.github.io/personal-site/#/letters/issue-02-good-questions</link>
+      <guid>https://deediaoyeh.github.io/personal-site/#/letters/issue-02-good-questions</guid>
       <pubDate>2026-11-15</pubDate>
       <description>本期聊聊：為什麼在打開搜尋引擎或語言模型之前，先花二十分鐘「重寫問題」是最划算的投資；以及三則近期讀書筆記。</description>
     </item>
     <item>
       <title>收藏家謬誤（Collector's Fallacy）：把「存下來」誤當成「學會了」</title>
-      <link>https://example.github.io/#/notes/note-collector-fallacy</link>
-      <guid>https://example.github.io/#/notes/note-collector-fallacy</guid>
+      <link>https://deediaoyeh.github.io/personal-site/#/notes/note-collector-fallacy</link>
+      <guid>https://deediaoyeh.github.io/personal-site/#/notes/note-collector-fallacy</guid>
       <pubDate>2026-11-12</pubDate>
       <description>按下「加入書籤」瞬間分泌的多巴胺，會讓大腦誤以為知識已經完成轉移。破解的唯一規則是：沒有用自己的話重寫三句，就不准歸檔。</description>
     </item>
     <item>
       <title>常青筆記（Evergreen Notes）的四個檢核條件</title>
-      <link>https://example.github.io/#/notes/note-evergreen-criteria</link>
-      <guid>https://example.github.io/#/notes/note-evergreen-criteria</guid>
+      <link>https://deediaoyeh.github.io/personal-site/#/notes/note-evergreen-criteria</link>
+      <guid>https://deediaoyeh.github.io/personal-site/#/notes/note-evergreen-criteria</guid>
       <pubDate>2026-11-03</pubDate>
       <description>好筆記不是按照「書籍名稱」或「會議日期」分類，而是以「單一原子觀點」命名，讓跨領域概念能自由重組。</description>
     </item>
     <item>
       <title>發刊詞：在喧囂的資訊流之外，闢一間安靜的書房</title>
-      <link>https://example.github.io/#/letters/issue-01-manifesto</link>
-      <guid>https://example.github.io/#/letters/issue-01-manifesto</guid>
+      <link>https://deediaoyeh.github.io/personal-site/#/letters/issue-01-manifesto</link>
+      <guid>https://deediaoyeh.github.io/personal-site/#/letters/issue-01-manifesto</guid>
       <pubDate>2026-11-01</pubDate>
       <description>《靜水深流》創刊號：為什麼在這個時代重新開始寫一封雙週電子報，以及我們接下來的同行約定。</description>
     </item>
     <item>
       <title>非同步書面決策：減少 35% 無效會議的團隊溝通結構</title>
-      <link>https://example.github.io/#/essays/written-decision-culture</link>
-      <guid>https://example.github.io/#/essays/written-decision-culture</guid>
+      <link>https://deediaoyeh.github.io/personal-site/#/essays/written-decision-culture</link>
+      <guid>https://deediaoyeh.github.io/personal-site/#/essays/written-decision-culture</guid>
       <pubDate>2026-10-29</pubDate>
       <description>會議室裡最昂貴的成本，是讓八個人同時聽一個人「邊講邊想」。導入一頁式提案單，能讓討論聚焦在真正的分歧點上。</description>
     </item>
     <item>
       <title>一頁式決策備忘錄（1-Page RFC）欄位範本</title>
-      <link>https://example.github.io/#/notes/note-one-page-rfc</link>
-      <guid>https://example.github.io/#/notes/note-one-page-rfc</guid>
+      <link>https://deediaoyeh.github.io/personal-site/#/notes/note-one-page-rfc</link>
+      <guid>https://deediaoyeh.github.io/personal-site/#/notes/note-one-page-rfc</guid>
       <pubDate>2026-10-25</pubDate>
       <description>供團隊在啟動新專案或變更流程前填寫的極簡結構：問題定義、不做會怎樣、三個可行方案與明確建議。</description>
     </item>
     <item>
       <title>一人知識事業的最小可行結構：內容、信任與資產複利</title>
-      <link>https://example.github.io/#/essays/minimal-solo-architecture</link>
-      <guid>https://example.github.io/#/essays/minimal-solo-architecture</guid>
+      <link>https://deediaoyeh.github.io/personal-site/#/essays/minimal-solo-architecture</link>
+      <guid>https://deediaoyeh.github.io/personal-site/#/essays/minimal-solo-architecture</guid>
       <pubDate>2026-09-22</pubDate>
       <description>脫離演算法租賃關係，用「自有網站＋電子報＋雲端知識庫」建立一個十年不壞的個人事業底座。</description>
     </item>
     <item>
       <title>租賃流量 vs. 自有受眾：為什麼 Email 依然不可取代</title>
-      <link>https://example.github.io/#/notes/note-owned-audience</link>
-      <guid>https://example.github.io/#/notes/note-owned-audience</guid>
+      <link>https://deediaoyeh.github.io/personal-site/#/notes/note-owned-audience</link>
+      <guid>https://deediaoyeh.github.io/personal-site/#/notes/note-owned-audience</guid>
       <pubDate>2026-09-15</pubDate>
       <description>演算法決定誰能看見你的貼文，但開放協定的 Email 名單與純文字網站真正屬於創作者自己。</description>
     </item>
