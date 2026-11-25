@@ -10,7 +10,7 @@ window.SITE_CONFIG = {
     "tagline": "這裡是一座持續生長的個人知識庫。",
     "role": "獨立研究者・數位應用思考者",
     "location": "Kaohsiung , Taiwan",
-    "since": "2024",
+    "since": "2026",
     "email": "deediao@gmail.com"
   },
   "intro": {
