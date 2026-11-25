@@ -66,7 +66,7 @@ CSP_PUBLIC = (
     "font-src 'self' https://fonts.gstatic.com data:; "
     "img-src 'self' data: blob: https:; "
     "media-src 'self' blob: https:; "
-    "connect-src 'self' https://deediao-studio.netlify.app https://raw.githubusercontent.com https://script.google.com https://script.googleusercontent.com; "
+    "connect-src 'self' https://api.github.com https://raw.githubusercontent.com https://deediao-studio.netlify.app https://script.google.com https://script.googleusercontent.com; "
     "frame-ancestors 'self'; "
     "object-src 'none'; "
     "base-uri 'self'; "

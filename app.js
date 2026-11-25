@@ -11,6 +11,8 @@
     window.location.hostname === "127.0.0.1" ||
     window.location.hostname === "::1";
   const LIVE_DATA_ENDPOINT = "https://deediao-studio.netlify.app/api/live-data";
+  const GITHUB_REPO = "deediaoyeh/personal-site";
+  const GITHUB_REF_URL = `https://api.github.com/repos/${GITHUB_REPO}/git/ref/heads/main`;
 
   const state = {
     manifest: null,
@@ -61,11 +63,48 @@
     }
   }
 
+  async function fetchLatestShaFromGitHub(signal) {
+    const res = await fetch(`${GITHUB_REF_URL}?t=${Date.now()}`, {
+      cache: "no-store",
+      headers: { Accept: "application/vnd.github+json" },
+      signal
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data?.object?.sha || null;
+  }
+
+  async function fetchLiveDataFromGitHub(signal) {
+    const sha = await fetchLatestShaFromGitHub(signal);
+    if (!sha) return null;
+    const rawBase = `https://raw.githubusercontent.com/${GITHUB_REPO}/${sha}`;
+    const [cfgRes, themeRes, manifestRes] = await Promise.all([
+      fetch(`${rawBase}/site.config.js`, { cache: "no-store", signal }),
+      fetch(`${rawBase}/theme.custom.css`, { cache: "no-store", signal }),
+      fetch(`${rawBase}/content/manifest.json`, { cache: "no-store", signal })
+    ]);
+
+    let config = null;
+    if (cfgRes.ok) {
+      const cfgRaw = await cfgRes.text();
+      const m = cfgRaw.match(/window\.SITE_CONFIG\s*=\s*(\{[\s\S]*\})\s*;?\s*$/);
+      if (m) config = JSON.parse(m[1]);
+    }
+    const themeCss = themeRes.ok ? await themeRes.text() : "";
+    const manifest = manifestRes.ok ? await manifestRes.json() : null;
+    return { ok: true, sha, rawBase, config, themeCss, manifest };
+  }
+
   async function fetchLiveDataSnapshot() {
     if (IS_LOCAL_HOST) return null;
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 4500);
+    const timer = setTimeout(() => ctrl.abort(), 5000);
     try {
+      // 優先直接透過 GitHub 最新 Commit SHA + 不可變 raw URL 拉取（0 秒快取延遲、不消耗 Netlify 額度）
+      const ghSnap = await fetchLiveDataFromGitHub(ctrl.signal);
+      if (ghSnap && ghSnap.manifest) return ghSnap;
+
+      // 備援：若 GitHub 匿名額度暫時達上限，退回 Netlify Function
       const res = await fetch(`${LIVE_DATA_ENDPOINT}?t=${Date.now()}`, {
         cache: "no-store",
         signal: ctrl.signal
@@ -84,11 +123,8 @@
   async function checkLiveUpdatesSilently() {
     if (IS_LOCAL_HOST || document.hidden) return;
     try {
-      const res = await fetch(`${LIVE_DATA_ENDPOINT}?shaOnly=1&t=${Date.now()}`, { cache: "no-store" });
-      if (!res.ok) return;
-      const info = await res.json();
-      if (!info || !info.ok || !info.sha) return;
-      if (state.liveSha && info.sha === state.liveSha) return;
+      const sha = await fetchLatestShaFromGitHub();
+      if (!sha || (state.liveSha && sha === state.liveSha)) return;
 
       const snap = await fetchLiveDataSnapshot();
       if (!snap) return;
@@ -167,12 +203,12 @@
       }
       await handleRoute(true);
 
-      // 公開站點：切回分頁或每 15 秒輕量檢查 GitHub 最新 SHA，有變更即自動無縫刷新
+      // 公開站點：切回分頁或每 60 秒輕量檢查 GitHub 最新 SHA，有變更即自動無縫刷新
       if (!IS_LOCAL_HOST) {
         document.addEventListener("visibilitychange", () => {
           if (!document.hidden) checkLiveUpdatesSilently();
         });
-        setInterval(checkLiveUpdatesSilently, 15000);
+        setInterval(checkLiveUpdatesSilently, 60000);
       }
     } catch (err) {
       document.getElementById("app-main").innerHTML = `
