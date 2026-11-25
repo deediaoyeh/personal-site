@@ -5,7 +5,7 @@
 (function () {
   "use strict";
 
-  const CONFIG = window.SITE_CONFIG;
+  let CONFIG = window.SITE_CONFIG;
   const state = {
     manifest: null,
     contentCache: new Map(),
@@ -30,13 +30,38 @@
   // =========================================================================
   // 初始化
   // =========================================================================
+  async function refreshLatestSiteConfig() {
+    try {
+      const bust = Date.now();
+      // 即時更新自訂主題覆寫樣式，避開 CDN 快取
+      const customThemeLink = document.querySelector('link[href*="./theme.custom.css"]');
+      if (customThemeLink) {
+        customThemeLink.href = `./theme.custom.css?t=${bust}`;
+      }
+      // 即時載入最新 site.config.js，徹底消除 GitHub Pages / 瀏覽器 10 分鐘快取延遲
+      const cfgRes = await fetch(`./site.config.js?t=${bust}`, { cache: "no-store" });
+      if (cfgRes.ok) {
+        const raw = await cfgRes.text();
+        const m = raw.match(/window\.SITE_CONFIG\s*=\s*(\{[\s\S]*\})\s*;?\s*$/);
+        if (m) {
+          const parsed = JSON.parse(m[1]);
+          window.SITE_CONFIG = parsed;
+          CONFIG = parsed;
+        }
+      }
+    } catch (_) {
+      // 保留初始載入之 window.SITE_CONFIG
+    }
+  }
+
   async function init() {
     applyTheme(state.theme);
+    await refreshLatestSiteConfig();
     renderShellChrome();
     bindGlobalEvents();
 
     try {
-      const res = await fetch("./content/manifest.json");
+      const res = await fetch(`./content/manifest.json?t=${Date.now()}`, { cache: "no-store" });
       if (!res.ok) throw new Error("無法讀取內容索引檔");
       state.manifest = await res.json();
       await handleRoute();
@@ -724,7 +749,9 @@
     if (state.contentCache.has(path)) {
       return state.contentCache.get(path);
     }
-    const res = await fetch(path);
+    const ver = encodeURIComponent(state.manifest?.updatedAt || Date.now());
+    const sep = path.includes("?") ? "&" : "?";
+    const res = await fetch(`${path}${sep}v=${ver}`, { cache: "no-store" });
     if (!res.ok) throw new Error(`無法載入內容：${path}`);
     const text = await res.text();
     state.contentCache.set(path, text);
