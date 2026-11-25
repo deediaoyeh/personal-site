@@ -1152,6 +1152,15 @@
 
   function htmlToMarkdown(html) {
     let s = String(html || "");
+    // 還原雙向連結 <a href="#/.../slug" class="wikilink">label</a> -> [[slug|label]]
+    s = s.replace(/<a[^>]*href=["']#\/(?:essays|notes|letters)\/([^"']+)["'][^>]*class=["'][^"']*wikilink[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi, (_, slug, label) => {
+      return `[[${decodeURIComponent(slug)}|${label.replace(/<[^>]+>/g, "").trim()}]]`;
+    });
+    s = s.replace(/<a[^>]*class=["'][^"']*wikilink[^"']*["'][^>]*href=["']#\/(?:essays|notes|letters)\/([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_, slug, label) => {
+      return `[[${decodeURIComponent(slug)}|${label.replace(/<[^>]+>/g, "").trim()}]]`;
+    });
+    // 一般超連結 <a href="url">label</a> -> [label](url)
+    s = s.replace(/<a[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, "[$2]($1)");
     s = s.replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, "\n## $1\n\n");
     s = s.replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, "\n### $1\n\n");
     s = s.replace(/<strong[^>]*>([\s\S]*?)<\/strong>/gi, "**$1**");
@@ -1159,8 +1168,14 @@
     s = s.replace(/<em[^>]*>([\s\S]*?)<\/em>/gi, "*$1*");
     s = s.replace(/<i[^>]*>([\s\S]*?)<\/i>/gi, "*$1*");
     s = s.replace(/<blockquote[^>]*>\s*<p[^>]*>([\s\S]*?)<\/p>\s*<\/blockquote>/gi, "\n> $1\n\n");
-    s = s.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, "- $1\n");
-    s = s.replace(/<\/?(ul|ol)[^>]*>/gi, "\n");
+    // 有序清單還原為 1. 2. 3.
+    s = s.replace(/<ol[^>]*>([\s\S]*?)<\/ol>/gi, (_, inner) => {
+      let idx = 1;
+      return "\n" + inner.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (__, item) => `${idx++}. ${item.trim()}\n`) + "\n";
+    });
+    s = s.replace(/<ul[^>]*>([\s\S]*?)<\/ul>/gi, (_, inner) => {
+      return "\n" + inner.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, "- $1\n") + "\n";
+    });
     s = s.replace(/<hr\s*\/?>/gi, "\n---\n");
     s = s.replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, "$1\n\n");
     s = s.replace(/<br\s*\/?>/gi, "\n");
