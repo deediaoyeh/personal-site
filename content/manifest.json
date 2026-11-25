@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-11-25T23:49:15Z",
+  "updatedAt": "2026-11-25T23:49:21Z",
   "count": 7,
   "items": [
     {
@@ -83,7 +83,8 @@
       "summary": "深度掌握 AntiGravity 這個工具，然後開始去思考各種應用的可能性，邁向 AI 協作的一小步",
       "tags": [
         "工具應用",
-        "思維"
+        "思維",
+        "AI"
       ],
       "links": [],
       "path": "./content/notes/note-20261125-2.md",
