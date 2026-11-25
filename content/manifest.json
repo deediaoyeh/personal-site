@@ -1,6 +1,6 @@
 {
-  "updatedAt": "2026-11-25T01:27:53Z",
-  "count": 1,
+  "updatedAt": "2026-11-25T01:39:51Z",
+  "count": 2,
   "items": [
     {
       "title": "這次我把AI當作SA來協作",
@@ -18,6 +18,23 @@
       "path": "./content/notes/note-20261125-1.md",
       "stage": "seedling",
       "noteCode": "NOTE · 001"
+    },
+    {
+      "title": "Antigravity深度應用-網站設計",
+      "slug": "note-20261125-2",
+      "type": "note",
+      "format": "html",
+      "date": "2026-11-25",
+      "readingTime": "2 min",
+      "summary": "深度掌握 AntiGravity 這個工具，然後開始去思考各種應用的可能性，邁向 AI 協作的一小步",
+      "tags": [
+        "工具應用",
+        "思維"
+      ],
+      "links": [],
+      "path": "./content/notes/note-20261125-2.md",
+      "stage": "budding",
+      "noteCode": "NOTE · 022"
     }
   ]
 }
