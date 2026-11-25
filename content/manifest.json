@@ -1,6 +1,6 @@
 {
-  "updatedAt": "2026-11-25T10:53:29Z",
-  "count": 4,
+  "updatedAt": "2026-11-25T12:46:58Z",
+  "count": 5,
   "items": [
     {
       "title": "持續不斷引導與思考",
@@ -67,6 +67,24 @@
       "path": "./content/notes/note-20261125-3.md",
       "stage": "seedling",
       "noteCode": "NOTE · 023"
+    },
+    {
+      "title": "Gemini Notebook使用心得",
+      "slug": "note-20261125-4",
+      "type": "note",
+      "format": "html",
+      "date": "2026-11-25",
+      "readingTime": "2 min",
+      "summary": "將Gemini Notebook 用得讓高中老師驚訝",
+      "tags": [
+        "思維模型",
+        "自主學習",
+        "專題"
+      ],
+      "links": [],
+      "path": "./content/notes/note-20261125-4.md",
+      "stage": "budding",
+      "noteCode": "NOTE · 024"
     }
   ]
 }
