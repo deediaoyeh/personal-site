@@ -63,6 +63,10 @@ window.SITE_CONFIG = {
       {
         "label": "零碎工作",
         "text": "自主學習研習、學習歷程、AI應用"
+      },
+      {
+        "label": "正在從事",
+        "text": "健行、泡湯"
       }
     ],
     "workAndProjects": [
