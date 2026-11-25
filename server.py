@@ -54,6 +54,7 @@ PROTECTED_CORE_FILES = {"index.html", "styles.css", "theme.custom.css", "app.js"
 EXCLUDED_STUDIO_FILES = {"studio.html", "studio.css", "studio.js", "studio-media.js"}
 FORBIDDEN_STATIC_PREFIXES = (
     "/.studio-auth.json",
+    "/.studio-jwt.key",
     "/.studio-audit.log",
     "/.sync.env",
     "/.git",
@@ -62,6 +63,7 @@ FORBIDDEN_STATIC_PREFIXES = (
     "/server.py",
     "/scripts/",
     "/google/",
+    "/netlify/",
 )
 
 DEFAULT_THEME = {
@@ -853,6 +855,16 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     data.get("totpCode", ""),
                     self._client_ip(),
                 )
+                # 背景自動將加密雜湊（不含明文密碼）同步至 Netlify 雲端環境變數，使 GitHub 主站與 Netlify 備份站工作台同步啟用 2FA
+                try:
+                    subprocess.Popen(
+                        [sys.executable, str(ROOT_DIR / "scripts" / "sync_auth_to_netlify.py")],
+                        cwd=str(ROOT_DIR),
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                except Exception:
+                    pass
                 sess = result["session"]
                 cookie_val = f"{COOKIE_NAME}={sess['token']}; Path=/; HttpOnly; SameSite=Strict; Max-Age=43200"
                 self._send_json(

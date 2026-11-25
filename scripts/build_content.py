@@ -193,18 +193,25 @@ def build_manifest_and_rss():
 
 
 def bundle_public_site(dest_name: str):
-    """僅打包對外公開網站所需檔案，徹底排除本機編輯工作台 (studio.* / server.py / scripts / .studio-*)"""
+    """打包公開網站與受雲端雙重驗證保護之前端工作台介面（嚴格排除本機 server.py / scripts / 私密金鑰檔）"""
     dest = (ROOT_DIR / dest_name).resolve()
     if dest.exists():
         shutil.rmtree(dest)
     dest.mkdir(parents=True, exist_ok=True)
 
-    excluded_html = {"studio.html"}
     for html_file in ROOT_DIR.glob("*.html"):
-        if html_file.name not in excluded_html:
-            shutil.copy2(html_file, dest / html_file.name)
+        shutil.copy2(html_file, dest / html_file.name)
 
-    for static_name in ("styles.css", "theme.custom.css", "site.config.js", "app.js", "rss.xml"):
+    for static_name in (
+        "styles.css",
+        "theme.custom.css",
+        "site.config.js",
+        "app.js",
+        "rss.xml",
+        "studio.css",
+        "studio.js",
+        "studio-media.js",
+    ):
         src = ROOT_DIR / static_name
         if src.exists():
             shutil.copy2(src, dest / static_name)
@@ -214,7 +221,7 @@ def bundle_public_site(dest_name: str):
         if src_dir.exists():
             shutil.copytree(src_dir, dest / folder_name)
 
-    print(f"公開發佈套件已產生至：{dest_name}/（已隔離排除離線編輯工作台檔案）")
+    print(f"公開發佈套件已產生至：{dest_name}/（含受雲端 2FA 閘門保護之工作台前端，已排除本機私密檔案）")
 
 
 if __name__ == "__main__":

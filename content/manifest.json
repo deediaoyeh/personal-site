@@ -1,6 +1,6 @@
 {
-  "updatedAt": "2026-11-25T02:01:25Z",
-  "count": 2,
+  "updatedAt": "2026-11-25T03:27:05Z",
+  "count": 3,
   "items": [
     {
       "title": "這次我把AI當作SA來協作",
@@ -35,6 +35,23 @@
       "path": "./content/notes/note-20261125-2.md",
       "stage": "budding",
       "noteCode": "NOTE · 022"
+    },
+    {
+      "title": "銀齡的族群需要哪些法律相關知識呢？",
+      "slug": "note-20261125-3",
+      "type": "note",
+      "format": "html",
+      "date": "2026-11-25",
+      "readingTime": "1 min",
+      "summary": "思考銀齡法律需求",
+      "tags": [
+        "銀齡",
+        "法律"
+      ],
+      "links": [],
+      "path": "./content/notes/note-20261125-3.md",
+      "stage": "seedling",
+      "noteCode": "NOTE · 023"
     }
   ]
 }

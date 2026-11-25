@@ -2,6 +2,7 @@
 *.log
 .sync.env
 .studio-auth.json
+.studio-jwt.key
 .studio-audit.log
 dist_public/
 .netlify

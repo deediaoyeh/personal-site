@@ -81,9 +81,9 @@
     document.getElementById("brand-name").textContent = CONFIG.brand.name;
     document.getElementById("brand-latin").textContent = CONFIG.brand.latinName;
 
-    // 僅於本機預覽 (localhost / 127.0.0.1) 顯示「編輯工作台」入口，公開主站與備份站自動隱藏
+    // 顯示受雙重驗證 (2FA) 保護之「編輯工作台」入口（未授權訪客點入將被雙重認證閘門攔截）
     const studioLink = document.getElementById("local-studio-link");
-    if (studioLink && (location.hostname === "localhost" || location.hostname === "127.0.0.1")) {
+    if (studioLink) {
       studioLink.hidden = false;
     }
 
