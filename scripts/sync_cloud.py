@@ -93,13 +93,19 @@ def sync_git_and_netlify(logs: list):
 
     git_dir = ROOT_DIR / ".git"
     if git_dir.exists():
-        subprocess.run(["git", "add", "."], cwd=str(ROOT_DIR), check=True)
-        diff = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=str(ROOT_DIR))
+        env = os.environ.copy()
+        local_bin = ROOT_DIR / ".local-bin"
+        if local_bin.exists():
+            env["PATH"] = f"{local_bin}:{env.get('PATH', '')}"
+
+        subprocess.run(["git", "add", "."], cwd=str(ROOT_DIR), env=env, check=True)
+        diff = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=str(ROOT_DIR), env=env)
         if diff.returncode != 0:
             ts = datetime.now().strftime("%Y-%m-%d %H:%M")
             subprocess.run(
                 ["git", "commit", "-m", f"studio: update site & content ({ts})"],
                 cwd=str(ROOT_DIR),
+                env=env,
                 check=True,
             )
             logs.append("  ✓ 已建立本機 Git 版本紀錄 (commit)。")
@@ -107,13 +113,22 @@ def sync_git_and_netlify(logs: list):
         remote = subprocess.run(
             ["git", "remote", "get-url", "origin"],
             cwd=str(ROOT_DIR),
+            env=env,
             capture_output=True,
             text=True,
         )
         if remote.returncode == 0 and remote.stdout.strip():
-            push = subprocess.run(
-                ["git", "push"],
+            subprocess.run(
+                ["git", "pull", "--rebase", "-X", "ours", "origin", "main"],
                 cwd=str(ROOT_DIR),
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            push = subprocess.run(
+                ["git", "push", "origin", "main"],
+                cwd=str(ROOT_DIR),
+                env=env,
                 capture_output=True,
                 text=True,
             )

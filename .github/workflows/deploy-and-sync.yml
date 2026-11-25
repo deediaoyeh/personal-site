@@ -42,6 +42,7 @@ jobs:
         run: python3 scripts/build_content.py
 
       - name: Commit synced content back to GitHub (auto-triggers Netlify mirror if connected)
+        if: github.event_name != 'push'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

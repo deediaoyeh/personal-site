@@ -345,6 +345,37 @@
     renderLiveContentPreview();
   }
 
+  function syncSlugPrefixForType(nextType) {
+    const slugInput = document.getElementById("doc-slug");
+    const raw = slugInput.value.trim();
+    const count =
+      state.manifest.items.filter(
+        (i) => i.type === nextType && !(i.slug === state.currentDoc.originalSlug && i.type === state.currentDoc.originalType)
+      ).length + 1;
+
+    if (!raw) {
+      slugInput.value = `${nextType}-${todayStr().replace(/-/g, "")}-${count}`;
+    } else {
+      // 若為系統預設日期流水號格式 (essay-YYYYMMDD-N)，連同該分類最新序號一併更新
+      const autoMatch = raw.match(/^(?:essay|note|letter|issue)-(\d{8})-\d+$/i);
+      if (autoMatch) {
+        slugInput.value = `${nextType}-${autoMatch[1]}-${count}`;
+      } else {
+        // 移除舊類型前綴後，冠上新類型前綴 (essay- / note- / letter-)
+        const stripped = raw.replace(/^(?:essay|note|letter|issue)-/i, "");
+        slugInput.value = stripped ? `${nextType}-${stripped}` : `${nextType}-${todayStr().replace(/-/g, "")}-${count}`;
+      }
+    }
+
+    // 切換至筆記或電子報時，若專屬編號空白則自動補上預設編號
+    if (nextType === "note" && !document.getElementById("doc-notecode").value.trim()) {
+      document.getElementById("doc-notecode").value = `NOTE · ${String(count).padStart(3, "0")}`;
+    }
+    if (nextType === "letter" && !document.getElementById("doc-issue").value.trim()) {
+      document.getElementById("doc-issue").value = String(count);
+    }
+  }
+
   function toggleTypeSpecificFields(type) {
     document.getElementById("wrap-note-stage").hidden = type !== "note";
     document.getElementById("wrap-note-code").hidden = type !== "note";
@@ -377,7 +408,9 @@
     document.getElementById("new-letter-btn").addEventListener("click", () => startNewDoc("letter"));
 
     document.getElementById("doc-type").addEventListener("change", (e) => {
-      toggleTypeSpecificFields(e.target.value);
+      const nextType = e.target.value;
+      syncSlugPrefixForType(nextType);
+      toggleTypeSpecificFields(nextType);
       markDirty();
       renderLiveContentPreview();
     });

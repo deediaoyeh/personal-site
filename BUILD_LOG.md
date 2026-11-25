@@ -102,6 +102,10 @@
    - 透過 GitHub CLI 完成 OAuth 授權（`deediaoyeh`）並寫入本機 Git 憑證設定（`.local-bin/gh`），後續離線工作台點擊「立即執行雲端同步」可直接無感推送。
    - 自動建立公開倉庫 **`https://github.com/deediaoyeh/personal-site`** 並推送 `main` 分支全部程式碼。
    - 透過 GitHub API 開啟 GitHub Pages（`build_type=workflow`）並完成首次自動建置部署（Workflow Run ID：`45519119950`），正式主站 **`https://deediaoyeh.github.io/personal-site/`** 已成功上線。
+6. **離線編輯器網址代稱前綴連動更新（2026-11-25 08:40）**：
+   - 於 `studio.js` 實作 `syncSlugPrefixForType()`：當切換「內容類型」（長文 `essay`／筆記 `note`／電子報 `letter`）時，自動同步更換「英文網址代稱 (Slug)」的前綴字（`essay-`、`note-`、`letter-`）並補齊對應卡片編號或期數。
+   - 為 `content/essays`、`content/notes`、`content/letters` 加入 `.gitkeep` 確保清空範例文章後目錄結構穩定，並最佳化 GitHub Actions 僅於排程／遠端拉取時寫回倉庫，避免本機推送產生衝突。
+
 
 
 
