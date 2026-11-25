@@ -95,5 +95,8 @@
    - 支援直接以帶行號程式碼編輯器修改 `index.html`、`styles.css`、`theme.custom.css`，並支援 **「＋ 新增獨立 HTML 網頁」**（自動套用靜謐書齋頁首與樣式骨架），右側配備即時渲染預覽與「桌面寬度／手機 390px」響應式切換。
 3. **GitHub 遠端倉庫預設綁定**：
    - 本機 Git 已設定預設 `origin` 為 `https://github.com/deediaoyeh/personal-site.git`（對應 GitHub Pages 主站網址：`https://deediaoyeh.github.io/personal-site/`），並於「電子報與同步」分頁新增遠端倉庫網址修改與綁定介面。
+4. **打包 Netlify 首次部署套件**：
+   - 因本機未安裝 Node.js (`npx`) 且內建瀏覽器尚未登入 `app.netlify.com`，已預先產出乾淨正式版壓縮包 `/Users/deediao/Downloads/Project/personal-site-deploy.zip` 供拖曳上傳或登入後自動上傳，完成首次發佈後 `https://deediao-studio.netlify.app/` 即可正式顯示內容。
+
 
 
