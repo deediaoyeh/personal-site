@@ -2,30 +2,31 @@
  * ==========================================================================
  * Google Workspace 書齋雲端中樞 (google-workspace-hub.gs)
  * ==========================================================================
- * 結合三大核心功能（零月租費，100% 資料自主保存在你的 Google Workspace）：
+ * 結合四大核心功能（零月租費，100% 資料自主保存在你的 Google Workspace）：
  * 1. 【Google Sheets 電子報名單管理】：接收網站訂閱、防重複、一鍵安全退訂。
- * 2. 【Gmail 自動歡迎信與群發電子報】：訂閱即寄歡迎信，並在試算表內建「群發電子報」選單。
- * 3. 【Google Drive 內容儲存空間同步】：讀取指定雲端硬碟資料夾內的 .md 或 Google Docs，
- *    並支援「一鍵手動觸發」或「定時自動同步」推送至 GitHub 主站與 Netlify 備份站！
+ * 2. 【Gmail 自動歡迎信與 HTML/純文字群發電子報】：訂閱即寄歡迎信，試算表內建一鍵群發。
+ * 3. 【自動彙整本期電子報】：一鍵（或設定雙週排程）自動抓取最新 1 篇長文＋3 則筆記生成草稿！
+ * 4. 【Google Drive 內容儲存空間同步】：讀取雲端硬碟 .md 或 Google Docs 同步至網站。
  * ==========================================================================
  */
 
-// ── 基本設定區（請填入你的資訊）──────────────────────────────────────────
+// ── 基本設定區（已預設對應你的網站資訊）──────────────────────────────────
 const HUB_CONFIG = {
-  SENDER_NAME: "Samuel Yeh · 靜水深流電子報",
+  SENDER_NAME: "低調走過 · Deediao",
+  NEWSLETTER_TITLE: "《低調走過》雙週電子報",
   SITE_URL: "https://deediaoyeh.github.io/personal-site",
   MIRROR_URL: "https://deediao-studio.netlify.app",
 
   // Google Drive 網站內容根資料夾 ID（PersonalSite-Vault，內含 essays、notes、letters 三個子資料夾）
   DRIVE_CONTENT_FOLDER_ID: "1n_ZQELr2H9f1Zre0rmntedtvyrohcGxS",
 
-  // 內容同步保護金鑰（選填，若填寫需與 GitHub Secrets 的 GOOGLE_WORKSPACE_SYNC_TOKEN 一致）
+  // 內容與草稿推送保護金鑰（選填，若填寫請與工作台／GitHub Secrets 一致）
   SYNC_TOKEN: "",
 
-  // 用於從 Google Sheet 選單「一鍵觸發 GitHub 主站與 Netlify 備份站同步」
+  // 用於從 Google Sheet 選單「一鍵觸發 GitHub 主站與 Netlify 備份站同步」（選填）
   GITHUB_OWNER: "deediaoyeh",
   GITHUB_REPO: "personal-site",
-  GITHUB_PAT: ""             // GitHub Fine-grained Token (需具備 Contents / Actions 權限)
+  GITHUB_PAT: ""
 };
 
 const SHEET_SUBSCRIBERS = "Subscribers";
@@ -37,10 +38,12 @@ const SHEET_ISSUES = "NewsletterDrafts";
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu("書齋控制台")
-    .addItem("初始化試算表結構", "setupSheets")
+    .addItem("1. 初始化試算表結構", "setupSheets")
     .addSeparator()
-    .addItem("立即同步 Google Drive 內容至 GitHub 主站 & Netlify", "triggerGitHubSync")
-    .addItem("寄送最新一期電子報草稿給所有訂戶", "sendLatestNewsletter")
+    .addItem("✨ 自動彙整最新「1 篇長文＋3 則筆記」產生本期草稿", "autoCompileBiweeklyDraft")
+    .addItem("📨 寄送最新一期電子報草稿給所有訂戶", "sendLatestNewsletter")
+    .addSeparator()
+    .addItem("🔄 立即同步 Google Drive 內容至 GitHub 主站", "triggerGitHubSync")
     .addToUi();
 }
 
@@ -60,12 +63,12 @@ function setupSheets() {
   let draftSheet = ss.getSheetByName(SHEET_ISSUES);
   if (!draftSheet) {
     draftSheet = ss.insertSheet(SHEET_ISSUES);
-    draftSheet.appendRow(["期數", "信件主旨", "信件純文字或簡易 HTML 內容", "發送狀態", "發送時間"]);
+    draftSheet.appendRow(["期數", "信件主旨", "信件內容 (純文字或 HTML)", "發送狀態", "發送時間"]);
     draftSheet.getRange("A1:E1").setFontWeight("bold");
     draftSheet.appendRow([
-      "03",
-      "《靜水深流》第 03 期：在資訊洪流中建立自己的判斷基準",
-      "週日早安，\n\n這是來自 Google Workspace 發信台的範例草稿。\n\n祝安好，\nDeediao",
+      "01",
+      "《低調走過》第 01 期：慢下來拆解問題，累積可複用的思維模型",
+      "週日早安，\n\n這是來自《低調走過》發信台的範例草稿。你也可以在工作台點擊「自動彙整本期電子報」後一鍵推送草稿至此處！\n\n祝安好，\n低調走過 (Deediao)",
       "draft",
       ""
     ]);
@@ -73,15 +76,24 @@ function setupSheets() {
 }
 
 /**
- * 處理網站前端 POST 請求（電子報訂閱）
+ * 處理網站前端與工作台 POST 請求：
+ * - action: "subscribe"  → 網站訪客訂閱電子報
+ * - action: "save_draft" → 從編輯工作台直接將寫好的電子報期數推送進試算表草稿匣
  */
 function doPost(e) {
   try {
     setupSheets();
-    const payload = JSON.parse(e.postData.contents || "{}");
+    const payload = JSON.parse((e && e.postData && e.postData.contents) || "{}");
 
     if (payload.action === "subscribe") {
       return handleSubscribe(payload);
+    }
+
+    if (payload.action === "save_draft") {
+      if (HUB_CONFIG.SYNC_TOKEN && payload.token !== HUB_CONFIG.SYNC_TOKEN) {
+        return jsonResponse({ ok: false, message: "金鑰驗證失敗 (SYNC_TOKEN 不符)" });
+      }
+      return handleSaveDraftFromStudio(payload);
     }
 
     return jsonResponse({ ok: false, message: "未知的操作類型" });
@@ -110,12 +122,12 @@ function doGet(e) {
   }
 
   return HtmlService.createHtmlOutput(
-    '<div style="font-family:serif;padding:48px;background:#f5f2eb;color:#1d1c19;">書齋雲端中樞運作正常。</div>'
+    '<div style="font-family:serif;padding:48px;background:#f5f2eb;color:#1d1c19;">《低調走過》電子報與雲端中樞運作正常。</div>'
   );
 }
 
 /**
- * 新增訂戶並寄出歡迎信
+ * 新增訂戶並自動寄出歡迎信
  */
 function handleSubscribe(payload) {
   const email = String(payload.email || "").trim().toLowerCase();
@@ -131,7 +143,6 @@ function handleSubscribe(payload) {
       if (rows[i][1] === "active") {
         return jsonResponse({ ok: true, alreadySubscribed: true });
       }
-      // 曾退訂者重新訂閱
       sheet.getRange(i + 1, 2).setValue("active");
       sheet.getRange(i + 1, 3).setValue(new Date().toISOString());
       return jsonResponse({ ok: true, resubscribed: true });
@@ -141,28 +152,114 @@ function handleSubscribe(payload) {
   const unsubToken = Utilities.getUuid();
   sheet.appendRow([email, "active", payload.timestamp || new Date().toISOString(), payload.source || "#/", unsubToken]);
 
-  // 寄出歡迎信
   const scriptUrl = ScriptApp.getService().getUrl();
   const unsubUrl = `${scriptUrl}?action=unsubscribe&email=${encodeURIComponent(email)}&token=${encodeURIComponent(unsubToken)}`;
   const body = [
     "你好，",
     "",
-    "謝謝你訂閱《靜水深流》雙週電子報。",
-    "未來每隔週日早晨，我會將近期完成的深度長文與讀書卡片寄到這個信箱。",
+    `謝謝你訂閱${HUB_CONFIG.NEWSLETTER_TITLE}。`,
+    "未來每隔週日早晨，我會將近期完成的深度長文導讀、三則讀書卡片與一個值得反覆推敲的問題寄到這個信箱。",
     "",
-    `在等待下一封信之前，你可以隨時造訪主站閱讀過往歸檔：${HUB_CONFIG.SITE_URL}`,
-    `（若主站維護中，亦可造訪備援站點：${HUB_CONFIG.MIRROR_URL}）`,
+    `在等待下一封信之前，你可以隨時造訪網站閱讀最新文章與筆記：${HUB_CONFIG.SITE_URL}`,
     "",
     "——",
     `${HUB_CONFIG.SENDER_NAME}`,
     `如需取消訂閱，請點此一鍵退訂：${unsubUrl}`
   ].join("\n");
 
-  GmailApp.sendEmail(email, "歡迎訂閱《靜水深流》—— 我們雙週日早晨見", body, {
+  GmailApp.sendEmail(email, `歡迎訂閱${HUB_CONFIG.NEWSLETTER_TITLE} —— 我們雙週日早晨見`, body, {
     name: HUB_CONFIG.SENDER_NAME
   });
 
   return jsonResponse({ ok: true });
+}
+
+/**
+ * 接收來自編輯工作台直接推送的電子報草稿
+ */
+function handleSaveDraftFromStudio(payload) {
+  const draftSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ISSUES);
+  const issueStr = String(payload.issue || "01").padStart(2, "0");
+  const subject = String(payload.subject || `${HUB_CONFIG.NEWSLETTER_TITLE} 第 ${issueStr} 期`).trim();
+  const content = String(payload.content || "").trim();
+  if (!content) {
+    return jsonResponse({ ok: false, message: "電子報內容不可為空" });
+  }
+
+  draftSheet.appendRow([issueStr, subject, content, "draft", ""]);
+  return jsonResponse({
+    ok: true,
+    message: `已將第 ${issueStr} 期草稿寫入 Google 試算表 NewsletterDrafts！隨時可於試算表點選「書齋控制台 → 寄送最新一期電子報草稿」。`
+  });
+}
+
+/**
+ * ✨ 自動從 GitHub 主站最新索引抓取「最新 1 篇長文＋3 則近期筆記」自動組裝本期電子報草稿
+ * （可手動從試算表選單點選，亦可於 Apps Script「觸發條件」設定每雙週自動執行！）
+ */
+function autoCompileBiweeklyDraft() {
+  setupSheets();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const draftSheet = ss.getSheetByName(SHEET_ISSUES);
+
+  const manifestRes = UrlFetchApp.fetch(`${HUB_CONFIG.SITE_URL}/content/manifest.json?t=${Date.now()}`, {
+    muteHttpExceptions: true
+  });
+  if (manifestRes.getResponseCode() !== 200) {
+    throw new Error("無法讀取網站 manifest.json 索引");
+  }
+
+  const manifest = JSON.parse(manifestRes.getContentText());
+  const items = manifest.items || [];
+  const latestEssay = items.find((i) => i.type === "essay");
+  const recentNotes = items.filter((i) => i.type === "note").slice(0, 3);
+
+  const existingRows = draftSheet.getDataRange().getValues();
+  const nextIssueNum = String(existingRows.length).padStart(2, "0");
+
+  const subject = latestEssay
+    ? `${HUB_CONFIG.NEWSLETTER_TITLE} № ${nextIssueNum}：${latestEssay.title}`
+    : `${HUB_CONFIG.NEWSLETTER_TITLE} № ${nextIssueNum}：近期研究與讀書筆記整理`;
+
+  const lines = [];
+  lines.push("週日早安，");
+  lines.push("");
+  lines.push("這過去兩週，我整理了近期的思考與閱讀筆記，與你分享：");
+  lines.push("");
+
+  if (latestEssay) {
+    lines.push("【一、本期核心長文導讀】");
+    lines.push(`▸ ${latestEssay.title}`);
+    if (latestEssay.summary) lines.push(latestEssay.summary);
+    lines.push(`閱讀全文：${HUB_CONFIG.SITE_URL}/#/essays/${latestEssay.slug}`);
+    lines.push("");
+  }
+
+  if (recentNotes.length > 0) {
+    lines.push("【二、近期知識卡片摘錄】");
+    recentNotes.forEach((n, idx) => {
+      lines.push(`${idx + 1}. ${n.title}`);
+      if (n.summary) lines.push(`   ${n.summary}`);
+      lines.push(`   → ${HUB_CONFIG.SITE_URL}/#/notes/${n.slug}`);
+    });
+    lines.push("");
+  }
+
+  lines.push("【三、本週留給你思考的一個問題】");
+  lines.push("• 在你目前投入最多時間的議題裡，哪一個假設如果其實是錯的，會徹底改變你的做法？");
+  lines.push("");
+  lines.push("祝你有個安靜充實的週日，");
+  lines.push("低調走過 · Deediao");
+
+  draftSheet.appendRow([nextIssueNum, subject, lines.join("\n"), "draft", ""]);
+
+  try {
+    SpreadsheetApp.getUi().alert(
+      `✓ 已自動彙整產生第 ${nextIssueNum} 期電子報草稿！\n請查看「NewsletterDrafts」工作表最後一列，確認無誤後即可點選選單群發。`
+    );
+  } catch (_) {
+    // 若由排程自動觸發則無 UI 視窗，直接靜默完成
+  }
 }
 
 /**
@@ -189,7 +286,7 @@ function handleUnsubscribe(email, token) {
 }
 
 /**
- * 群發最新一期草稿給所有 active 訂戶
+ * 群發最新一期草稿給所有 active 訂戶（自動支援 HTML 與純文字雙格式）
  */
 function sendLatestNewsletter() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -207,13 +304,18 @@ function sendLatestNewsletter() {
   }
 
   if (targetRowIndex === -1) {
-    ui.alert("找不到狀態為 draft 的電子報草稿。");
+    ui.alert("找不到狀態為 draft 的電子報草稿。可先點選「✨ 自動彙整最新 1 篇長文＋3 則筆記」產生草稿！");
     return;
   }
 
   const subject = drafts[targetRowIndex][1];
-  const content = drafts[targetRowIndex][2];
+  const content = String(drafts[targetRowIndex][2] || "");
   const subs = subSheet.getDataRange().getValues().slice(1).filter((r) => r[1] === "active");
+
+  if (subs.length === 0) {
+    ui.alert("目前尚無狀態為 active 的有效訂戶。");
+    return;
+  }
 
   const confirm = ui.alert(
     "確認發送電子報",
@@ -222,13 +324,32 @@ function sendLatestNewsletter() {
   );
   if (confirm !== ui.Button.YES) return;
 
+  const isHtml = /<\/?(p|h[1-6]|div|ul|ol|li|blockquote|a|strong)\b/i.test(content);
   const scriptUrl = ScriptApp.getService().getUrl();
+
   subs.forEach((sub) => {
     const email = sub[0];
     const token = sub[4];
     const unsubUrl = `${scriptUrl}?action=unsubscribe&email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
-    const fullBody = `${content}\n\n——\n線上閱讀與歷史歸檔：${HUB_CONFIG.SITE_URL}\n取消訂閱：${unsubUrl}`;
-    GmailApp.sendEmail(email, subject, fullBody, { name: HUB_CONFIG.SENDER_NAME });
+    const footerPlain = `\n\n——\n線上閱讀與歷史歸檔：${HUB_CONFIG.SITE_URL}/#/letters\n取消訂閱：${unsubUrl}`;
+
+    if (isHtml) {
+      const htmlMail =
+        `<div style="font-family:'PingFang TC','Noto Sans TC',Georgia,serif;max-width:620px;margin:0 auto;padding:28px 24px;background:#faf8f4;color:#1d1c19;line-height:1.85;font-size:16px;">` +
+        content +
+        `<hr style="border:none;border-top:1px solid #dcd6ca;margin:32px 0 16px;" />` +
+        `<p style="font-size:13px;color:#857f73;">線上閱讀與歷史歸檔：<a href="${HUB_CONFIG.SITE_URL}/#/letters" style="color:#6e5039;">${HUB_CONFIG.SITE_URL}</a><br/>如需取消訂閱，請點此：<a href="${unsubUrl}" style="color:#6e5039;">一鍵取消訂閱</a></p>` +
+        `</div>`;
+      const plainFallback = content.replace(/<[^>]+>/g, "") + footerPlain;
+      GmailApp.sendEmail(email, subject, plainFallback, {
+        name: HUB_CONFIG.SENDER_NAME,
+        htmlBody: htmlMail
+      });
+    } else {
+      GmailApp.sendEmail(email, subject, content + footerPlain, {
+        name: HUB_CONFIG.SENDER_NAME
+      });
+    }
   });
 
   draftSheet.getRange(targetRowIndex + 1, 4).setValue("sent");
@@ -237,7 +358,7 @@ function sendLatestNewsletter() {
 }
 
 /**
- * 讀取 Google Drive 指定資料夾內的 essays / notes / letters（支援 .md 純文字檔與 Google Docs 文件）
+ * 讀取 Google Drive 指定資料夾內的 essays / notes / letters
  */
 function exportDriveContentAsJson() {
   if (!HUB_CONFIG.DRIVE_CONTENT_FOLDER_ID) {
@@ -282,9 +403,6 @@ function exportDriveContentAsJson() {
   return jsonResponse({ ok: true, documents: documents });
 }
 
-/**
- * 將 Google Docs 轉換為含 Frontmatter 的乾淨 Markdown（若文件開頭已有 --- Frontmatter 則直接保留）
- */
 function convertGoogleDocToMarkdown(docId, fallbackSlug, docType, updatedDate) {
   const doc = DocumentApp.openById(docId);
   const body = doc.getBody();
@@ -306,9 +424,7 @@ function convertGoogleDocToMarkdown(docId, fallbackSlug, docType, updatedDate) {
         continue;
       }
       const heading = p.getHeading();
-      if (heading === DocumentApp.ParagraphHeading.HEADING1) {
-        lines.push(`## ${text}`);
-      } else if (heading === DocumentApp.ParagraphHeading.HEADING2) {
+      if (heading === DocumentApp.ParagraphHeading.HEADING1 || heading === DocumentApp.ParagraphHeading.HEADING2) {
         lines.push(`## ${text}`);
       } else if (heading === DocumentApp.ParagraphHeading.HEADING3) {
         lines.push(`### ${text}`);
@@ -336,9 +452,6 @@ function convertGoogleDocToMarkdown(docId, fallbackSlug, docType, updatedDate) {
   return frontmatter + lines.join("\n");
 }
 
-/**
- * 從 Google Sheets 選單手動觸發 GitHub Actions，立即更新 GitHub Pages 主站與 Netlify 備份站
- */
 function triggerGitHubSync() {
   const ui = SpreadsheetApp.getUi();
   if (!HUB_CONFIG.GITHUB_OWNER || !HUB_CONFIG.GITHUB_REPO || !HUB_CONFIG.GITHUB_PAT) {
@@ -359,7 +472,7 @@ function triggerGitHubSync() {
   });
 
   if (res.getResponseCode() >= 200 && res.getResponseCode() < 300) {
-    ui.alert("已成功通知 GitHub 主站開始同步！約 45 秒後 GitHub Pages 主站與 Netlify 備份站將同步更新完成。");
+    ui.alert("已成功通知 GitHub 主站開始同步！約 45 秒後將同步更新完成。");
   } else {
     ui.alert(`觸發失敗 (${res.getResponseCode()})：${res.getContentText()}`);
   }

@@ -442,6 +442,10 @@
     document.getElementById("new-essay-btn").addEventListener("click", () => startNewDoc("essay"));
     document.getElementById("new-note-btn").addEventListener("click", () => startNewDoc("note"));
     document.getElementById("new-letter-btn").addEventListener("click", () => startNewDoc("letter"));
+    const autoLetterBtn = document.getElementById("auto-compile-letter-btn");
+    if (autoLetterBtn) {
+      autoLetterBtn.addEventListener("click", autoCompileNewsletterIssue);
+    }
 
     document.getElementById("doc-type").addEventListener("change", (e) => {
       const nextType = e.target.value;
@@ -884,6 +888,143 @@
     document.getElementById("cfg-nl-placeholder").value = nl.inputPlaceholder || "";
     document.getElementById("cfg-nl-buttontext").value = nl.buttonText || "";
     document.getElementById("cfg-nl-scripturl").value = nl.googleScriptUrl || "";
+    updateNewsletterConnectionBadge();
+  }
+
+  function updateNewsletterConnectionBadge() {
+    const box = document.getElementById("nl-connection-status");
+    if (!box) return;
+    const url = (document.getElementById("cfg-nl-scripturl")?.value || "").trim();
+    if (!url) {
+      box.innerHTML =
+        `<strong style="color:#9e3f33;">● 目前狀態：本機展示模式（尚未綁定 Google 試算表收單端點）</strong><br/>` +
+        `訪客目前填寫信箱僅會顯示測試成功訊息，尚未寫入雲端試算表。<br/>` +
+        `<strong>啟用步驟：</strong>新增一份 Google 試算表 →「擴充功能 → Apps Script」貼入專案內的 <code>google/google-workspace-hub.gs</code> → 右上角「部署 → 新增部署作業 → 網頁應用程式（誰可以存取：所有人）」→ 將取得的 <code>https://script.google.com/.../exec</code> 貼入上方欄位並按「儲存 ⌘S」即完成！`;
+    } else if (/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/i.test(url)) {
+      box.innerHTML =
+        `<strong style="color:#485643;">● 目前狀態：已正式連通 Google Workspace 自動收單與發信中樞</strong><br/>` +
+        `訂戶填寫信箱後將自動寫入試算表 <code>Subscribers</code>、自動寄出歡迎信並支援一鍵退訂。`;
+    } else {
+      box.innerHTML =
+        `<strong style="color:#9e3f33;">● 網址格式提醒：</strong>Google Apps Script 網頁應用程式網址通常以 <code>https://script.google.com/macros/s/</code> 開頭、<code>/exec</code> 結尾，請確認是否複製到正式部署網址。`;
+    }
+  }
+
+  async function autoCompileNewsletterIssue() {
+    // 切換回「內容寫作」分頁並自動組裝新一期電子報
+    document.querySelector('[data-tab="content"]')?.click();
+    startNewDoc("letter");
+
+    const items = state.manifest?.items || [];
+    const latestEssay = items.find((i) => i.type === "essay");
+    const recentNotes = items.filter((i) => i.type === "note").slice(0, 3);
+    const issueCount = items.filter((i) => i.type === "letter").length + 1;
+    const issuePad = String(issueCount).padStart(2, "0");
+    const nlTitle = state.config?.newsletter?.title || "《低調走過》雙週電子報";
+
+    document.getElementById("doc-issue").value = String(issueCount);
+    document.getElementById("doc-title").value = latestEssay
+      ? `${nlTitle} № ${issuePad}：${latestEssay.title}`
+      : `${nlTitle} № ${issuePad}：近期研究與思考卡片整理`;
+    document.getElementById("doc-tags").value = "雙週電子報, 研究整理";
+    document.getElementById("doc-summary").value = latestEssay
+      ? `本期導讀核心長文〈${latestEssay.title}〉，並精選 ${recentNotes.length} 則近期知識卡片與一個留給你反覆推敲的問題。`
+      : `精選近期完成的 ${recentNotes.length} 則知識筆記卡片與研究觀察。`;
+
+    const mdLines = [];
+    mdLines.push("週日早安，");
+    mdLines.push("");
+    mdLines.push("這過去兩週，我將近期持續追蹤的議題與閱讀思考整理成這封信，陪你安靜開啟新的一週。");
+    mdLines.push("");
+
+    if (latestEssay) {
+      mdLines.push("## 一、本期核心長文導讀");
+      mdLines.push("");
+      mdLines.push(`### [[${latestEssay.slug}|${latestEssay.title}]]`);
+      if (latestEssay.summary) {
+        mdLines.push("");
+        mdLines.push(`> ${latestEssay.summary}`);
+      }
+      mdLines.push("");
+      mdLines.push(`→ 點擊閱讀完整推論：[[${latestEssay.slug}|前往閱讀全文]]`);
+      mdLines.push("");
+    }
+
+    if (recentNotes.length > 0) {
+      mdLines.push("## 二、近期三則讀書與思考卡片");
+      mdLines.push("");
+      recentNotes.forEach((n, idx) => {
+        const summaryPart = n.summary ? ` — ${n.summary}` : "";
+        mdLines.push(`${idx + 1}. **[[${n.slug}|${n.title}]]**${summaryPart}`);
+      });
+      mdLines.push("");
+    }
+
+    mdLines.push("## 三、本週留給你反覆推敲的一個問題");
+    mdLines.push("");
+    mdLines.push("> 在你目前投入最多心力的課題裡，哪一個「理所當然的前提」如果其實不再成立，會讓你做出完全不同的決定？");
+    mdLines.push("");
+    mdLines.push("---");
+    mdLines.push("");
+    mdLines.push("祝你有個安靜而充實的週日，");
+    mdLines.push(`${state.config?.brand?.name || "低調走過"} (${state.config?.brand?.latinName || "Deediao"})`);
+
+    const compiledMd = mdLines.join("\n");
+    applyEditorModeUI("markdown", false);
+    document.getElementById("doc-body").value = compiledMd;
+    state.docFormat = "markdown";
+    markDirty("content");
+    renderLiveContentPreview();
+    setStatus(`✨ 已自動彙整產生第 ${issuePad} 期電子報草稿！確認或微調後按「儲存 ⌘S」即可發佈歸檔`, "is-saved");
+  }
+
+  async function pushCurrentLetterToGoogleSheets() {
+    const scriptUrl = (document.getElementById("cfg-nl-scripturl")?.value || state.config?.newsletter?.googleScriptUrl || "").trim();
+    if (!scriptUrl) {
+      setStatus("請先在上方填入 Google Apps Script 網頁應用程式網址後再推送草稿", "is-dirty");
+      document.getElementById("cfg-nl-scripturl")?.focus();
+      return;
+    }
+
+    const docType = document.getElementById("doc-type").value;
+    const title = document.getElementById("doc-title").value.trim();
+    const body =
+      state.editorMode === "wysiwyg"
+        ? document.getElementById("doc-wysiwyg").innerHTML
+        : document.getElementById("doc-body").value.trim();
+    const issue = document.getElementById("doc-issue").value.trim() || "01";
+
+    if (docType !== "letter" || !body) {
+      setStatus("請先在「內容寫作」選擇或點擊「✨ 自動彙整本期電子報」準備好電子報內容再推送", "is-dirty");
+      return;
+    }
+
+    const btn = document.getElementById("push-nl-draft-btn");
+    btn.disabled = true;
+    setStatus("正在將本期電子報草稿推送至 Google 試算表發信台⋯");
+
+    try {
+      const res = await fetch(scriptUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({
+          action: "save_draft",
+          issue,
+          subject: title,
+          content: body
+        })
+      });
+      let data = { ok: true };
+      try {
+        data = await res.json();
+      } catch (_) {}
+      if (data.ok === false) throw new Error(data.message || "推送草稿失敗");
+      setStatus(data.message || `✓ 已將第 ${issue} 期草稿送入 Google 試算表發信台！`, "is-saved");
+    } catch (err) {
+      setStatus(`推送失敗：${err.message}`, "is-dirty");
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   function collectConfigFromForms() {
@@ -1020,6 +1161,16 @@
       .forEach((el) => {
         el.addEventListener("input", markDirty);
       });
+
+    document.getElementById("cfg-nl-scripturl").addEventListener("input", updateNewsletterConnectionBadge);
+    const syncCompileBtn = document.getElementById("sync-tab-compile-letter-btn");
+    if (syncCompileBtn) {
+      syncCompileBtn.addEventListener("click", autoCompileNewsletterIssue);
+    }
+    const pushDraftBtn = document.getElementById("push-nl-draft-btn");
+    if (pushDraftBtn) {
+      pushDraftBtn.addEventListener("click", pushCurrentLetterToGoogleSheets);
+    }
 
     // 綁定 GitHub 遠端倉庫按鈕
     document.getElementById("save-git-remote-btn").addEventListener("click", async () => {

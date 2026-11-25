@@ -82,7 +82,7 @@ CSP_STUDIO = (
     "img-src 'self' data: blob: https:; "
     "media-src 'self' blob: https:; "
     "frame-src 'self' blob: https://www.youtube.com https://www.youtube-nocookie.com; "
-    "connect-src 'self' https://deediao-studio.netlify.app https://raw.githubusercontent.com https://www.googleapis.com https://www.youtube.com; "
+    "connect-src 'self' https://deediao-studio.netlify.app https://raw.githubusercontent.com https://www.googleapis.com https://www.youtube.com https://script.google.com https://script.googleusercontent.com; "
     "frame-ancestors 'self'; "
     "object-src 'none'; "
     "base-uri 'self'; "

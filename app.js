@@ -535,9 +535,12 @@
           </div>
         </div>
         <div>
-          ${letters
-            .map(
-              (item) => `
+          ${
+            letters.length === 0
+              ? `<p style="color:var(--ink-muted); padding:20px 0;">首期雙週電子報正在彙整撰寫中。歡迎先於上方留下常用信箱，出刊週日早晨將第一時間寄送給你。</p>`
+              : letters
+                  .map(
+                    (item) => `
             <a href="#/letters/${encodeURIComponent(item.slug)}" class="issue-row">
               <span class="issue-num">ISSUE № ${escapeHtml(String(item.issue || "01").padStart(2, "0"))}</span>
               <div class="essay-row-main">
@@ -547,8 +550,9 @@
               <span class="meta-date" style="text-align:right;">${escapeHtml(formatDateDot(item.date))}</span>
             </a>
           `
-            )
-            .join("")}
+                  )
+                  .join("")
+          }
         </div>
       </section>
     `;
