@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta
     http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' blob: https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; frame-src 'self' blob:; connect-src 'self' https://deediao-studio.netlify.app https://raw.githubusercontent.com https://www.googleapis.com; object-src 'none'; base-uri 'self'; form-action 'self'"
+    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' blob: https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; frame-src 'self' blob: https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self' https://deediao-studio.netlify.app https://raw.githubusercontent.com https://www.googleapis.com https://www.youtube.com; object-src 'none'; base-uri 'self'; form-action 'self'"
   />
   <title>書齋離線工作台 · Offline Website & HTML Studio</title>
   <link rel="stylesheet" href="./styles.css" />
@@ -149,6 +149,7 @@
             <span class="toolbar-sep" aria-hidden="true">|</span>
             <button type="button" class="tool-btn media-accent-btn" data-trigger-photo="content">＋插入照片</button>
             <button type="button" class="tool-btn media-accent-btn" data-trigger-file="content">＋加入檔案</button>
+            <button type="button" class="tool-btn media-accent-btn" data-insert-youtube="content">＋YouTube 影片</button>
             <button type="button" class="tool-btn media-accent-btn" data-open-gdrive="content">Google 雲端硬碟</button>
           </div>
 
@@ -171,6 +172,7 @@
             <span class="toolbar-sep" aria-hidden="true">|</span>
             <button type="button" class="tool-btn media-accent-btn" data-trigger-photo="content">＋插入照片</button>
             <button type="button" class="tool-btn media-accent-btn" data-trigger-file="content">＋加入檔案</button>
+            <button type="button" class="tool-btn media-accent-btn" data-insert-youtube="content">＋YouTube 影片</button>
             <button type="button" class="tool-btn media-accent-btn" data-open-gdrive="content">Google 雲端硬碟</button>
             <button type="button" class="tool-btn" data-wysiwyg="clean">清除格式</button>
           </div>
@@ -228,6 +230,7 @@
             <span class="toolbar-sep" aria-hidden="true">|</span>
             <button type="button" class="tool-btn media-accent-btn" data-trigger-photo="html-page">＋插入照片</button>
             <button type="button" class="tool-btn media-accent-btn" data-trigger-file="html-page">＋加入檔案</button>
+            <button type="button" class="tool-btn media-accent-btn" data-insert-youtube="html-page">＋YouTube 影片</button>
             <button type="button" class="tool-btn media-accent-btn" data-open-gdrive="html-page">Google 雲端硬碟</button>
             <button type="button" id="delete-html-page-btn" class="tool-btn danger-btn" hidden>刪除此網頁</button>
           </div>

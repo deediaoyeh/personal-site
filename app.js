@@ -936,10 +936,44 @@
     return { meta, body: match[2] };
   }
 
+  function extractStandaloneYouTube(rawLine) {
+    const trimmed = String(rawLine || "").trim();
+    const m = trimmed.match(
+      /^https?:\/\/(?:(?:www\.|m\.|music\.)?youtube\.com\/(?:watch\?[^\s]*v=|shorts\/|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})(?:[?&][^\s]*)?$/i
+    );
+    if (!m) return null;
+    const videoId = m[1];
+    let startSec = 0;
+    try {
+      const u = new URL(trimmed);
+      const rawT = (u.searchParams.get("t") || u.searchParams.get("start") || "").toLowerCase();
+      if (/^\d+$/.test(rawT)) startSec = Number(rawT);
+    } catch (_) {}
+    const watchUrl = `https://www.youtube.com/watch?v=${videoId}` + (startSec > 0 ? `&t=${startSec}s` : "");
+    const embedUrl = `https://www.youtube.com/embed/${videoId}?rel=0` + (startSec > 0 ? `&start=${startSec}` : "");
+    return {
+      html:
+        `<figure class="yt-media-card" data-yt-id="${escapeHtml(videoId)}">` +
+        `<div class="yt-player-stage">` +
+        `<img class="yt-thumb-bg" src="https://i.ytimg.com/vi/${escapeHtml(videoId)}/hqdefault.jpg" alt="YouTube 影片縮圖" loading="lazy" />` +
+        `<iframe class="yt-embed-iframe" src="${escapeHtml(embedUrl)}" title="YouTube video player" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>` +
+        `</div>` +
+        `<figcaption class="yt-card-bar">` +
+        `<a class="yt-thumb-mini-wrap" href="${escapeHtml(watchUrl)}" target="_blank" rel="noopener noreferrer"><img class="yt-thumb-mini" src="https://i.ytimg.com/vi/${escapeHtml(videoId)}/mqdefault.jpg" alt="影片縮圖" loading="lazy" /></a>` +
+        `<div class="yt-card-info"><span class="yt-badge mono-label">YOUTUBE VIDEO</span><a class="yt-card-title" href="${escapeHtml(watchUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(watchUrl)} ↗</a></div>` +
+        `</figcaption></figure>`
+    };
+  }
+
   function parseHtmlContent(rawHtml) {
     const headings = [];
+    // 若 HTML 段落中單獨放了一行純文字 YouTube 網址，自動轉為縮圖與內嵌播放器
+    let processed = rawHtml.replace(/<p[^>]*>\s*(https?:\/\/[^\s<]+)\s*<\/p>/gi, (full, urlCandidate) => {
+      const yt = extractStandaloneYouTube(urlCandidate);
+      return yt ? yt.html : full;
+    });
     // 解析雙向連結 [[slug|label]]
-    let processed = rawHtml.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, targetSlug, customLabel) => {
+    processed = processed.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, targetSlug, customLabel) => {
       const cleanSlug = targetSlug.trim();
       const found = state.manifest ? state.manifest.items.find((i) => i.slug === cleanSlug) : null;
       const routePrefix = found
@@ -1070,9 +1104,17 @@
       }
 
       // 原生支援在 Markdown 中直接撰寫 HTML 區塊與媒體標籤
-      if (/^<\/?(div|section|aside|figure|figcaption|details|summary|table|thead|tbody|tr|td|th|iframe|blockquote|p|ul|ol|li|h[1-6]|hr|br|img|video|audio|a)\b/i.test(trimmed)) {
+      if (/^<\/?(div|section|aside|figure|figcaption|details|summary|table|thead|tbody|tr|td|th|iframe|blockquote|p|ul|ol|li|h[1-6]|hr|br|img|video|audio|a|span)\b/i.test(trimmed)) {
         flushAll();
         out.push(line);
+        continue;
+      }
+
+      // 單行獨立 YouTube 網址自動渲染為影片縮圖＋內嵌播放器
+      const ytBlock = extractStandaloneYouTube(trimmed);
+      if (ytBlock) {
+        flushAll();
+        out.push(ytBlock.html);
         continue;
       }
 

@@ -63,6 +63,20 @@
         openMediaModal(btn.dataset.openGdrive, "gdrive");
       });
     });
+
+    document.querySelectorAll("[data-insert-youtube]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const scope = btn.dataset.insertYoutube || "content";
+        const raw = window.prompt("請貼上 YouTube 影片網址（支援 watch / youtu.be / shorts / live）：", "https://");
+        if (!raw || raw.trim() === "https://") return;
+        const parsed = parseYouTubeUrl(raw.trim());
+        if (!parsed) {
+          bridge()?.setStatus("無法辨識此 YouTube 網址，請確認連結格式是否正確。", "is-dirty");
+          return;
+        }
+        await insertYouTubeEmbed(parsed, scope);
+      });
+    });
   }
 
   function bindFileInputs() {
@@ -131,6 +145,22 @@
         if (imgFiles.length > 0) {
           e.preventDefault();
           await uploadAndInsertFiles(imgFiles, scope);
+          return;
+        }
+
+        // 支援直接貼上 YouTube 網址 → 自動轉換為影片縮圖與內嵌播放器卡片
+        const pastedText = (e.clipboardData?.getData("text/plain") || "").trim();
+        const ytParsed = parseYouTubeUrl(pastedText);
+        if (ytParsed) {
+          // 若在原始碼 textarea 中且游標正位於 href="..." 或 src="..." 屬性引號內，保留純網址貼上，不強制轉卡片
+          if (el.tagName === "TEXTAREA") {
+            const before = el.value.slice(Math.max(0, (el.selectionStart || 0) - 60), el.selectionStart || 0);
+            if (/[a-z-]+\s*=\s*["'][^"']*$/i.test(before)) {
+              return;
+            }
+          }
+          e.preventDefault();
+          await insertYouTubeEmbed(ytParsed, scope);
         }
       });
     });
@@ -451,6 +481,132 @@
         }
       });
     });
+  }
+
+  // =========================================================================
+  // YouTube 網址智慧解析與縮圖＋內嵌播放器生成
+  // =========================================================================
+  function parseTimestampSeconds(raw) {
+    if (!raw) return 0;
+    const s = String(raw).trim().toLowerCase();
+    if (/^\d+$/.test(s)) return Number(s);
+    let total = 0;
+    const h = s.match(/(\d+)h/);
+    const m = s.match(/(\d+)m/);
+    const sec = s.match(/(\d+)s/);
+    if (h) total += Number(h[1]) * 3600;
+    if (m) total += Number(m[1]) * 60;
+    if (sec) total += Number(sec[1]);
+    return total;
+  }
+
+  function parseYouTubeUrl(rawText) {
+    const trimmed = String(rawText || "").trim();
+    if (!trimmed || /\s/.test(trimmed)) return null;
+
+    let candidate = trimmed;
+    if (/^(?:www\.|m\.|music\.)?(?:youtube\.com|youtu\.be)\//i.test(candidate)) {
+      candidate = "https://" + candidate;
+    }
+    if (!/^https?:\/\//i.test(candidate)) return null;
+
+    let u;
+    try {
+      u = new URL(candidate);
+    } catch (_) {
+      return null;
+    }
+
+    const host = u.hostname.toLowerCase().replace(/^www\./, "");
+    let videoId = "";
+
+    if (host === "youtu.be") {
+      videoId = u.pathname.split("/").filter(Boolean)[0] || "";
+    } else if (
+      host === "youtube.com" ||
+      host === "m.youtube.com" ||
+      host === "music.youtube.com" ||
+      host === "youtube-nocookie.com"
+    ) {
+      if (u.pathname === "/watch") {
+        videoId = u.searchParams.get("v") || "";
+      } else {
+        const parts = u.pathname.split("/").filter(Boolean);
+        if (parts.length >= 2 && ["shorts", "embed", "live", "v"].includes(parts[0])) {
+          videoId = parts[1];
+        }
+      }
+    }
+
+    if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) return null;
+
+    const startSeconds = parseTimestampSeconds(u.searchParams.get("t") || u.searchParams.get("start") || "");
+    const canonicalUrl =
+      `https://www.youtube.com/watch?v=${videoId}` + (startSeconds > 0 ? `&t=${startSeconds}s` : "");
+    const embedUrl =
+      `https://www.youtube.com/embed/${videoId}?rel=0` + (startSeconds > 0 ? `&start=${startSeconds}` : "");
+
+    return {
+      videoId,
+      startSeconds,
+      canonicalUrl,
+      embedUrl,
+      hqThumb: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+      mqThumb: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`
+    };
+  }
+
+  function buildYouTubeCardHtml(yt, titleText) {
+    const displayTitle = titleText || `YouTube 影片 (${yt.videoId})`;
+    return (
+      `<figure class="yt-media-card" contenteditable="false" data-yt-id="${esc(yt.videoId)}">\n` +
+      `  <div class="yt-player-stage">\n` +
+      `    <img class="yt-thumb-bg" src="${esc(yt.hqThumb)}" alt="${esc(displayTitle)} 縮圖" loading="lazy" />\n` +
+      `    <iframe class="yt-embed-iframe" src="${esc(yt.embedUrl)}" title="${esc(
+        displayTitle
+      )}" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>\n` +
+      `  </div>\n` +
+      `  <figcaption class="yt-card-bar">\n` +
+      `    <a class="yt-thumb-mini-wrap" href="${esc(yt.canonicalUrl)}" target="_blank" rel="noopener noreferrer" title="在 YouTube 開啟影片">\n` +
+      `      <img class="yt-thumb-mini" src="${esc(yt.mqThumb)}" alt="影片縮圖" loading="lazy" />\n` +
+      `    </a>\n` +
+      `    <div class="yt-card-info">\n` +
+      `      <span class="yt-badge mono-label">YOUTUBE VIDEO</span>\n` +
+      `      <a class="yt-card-title" data-yt-title-for="${esc(yt.videoId)}" href="${esc(
+        yt.canonicalUrl
+      )}" target="_blank" rel="noopener noreferrer">${esc(displayTitle)} ↗</a>\n` +
+      `    </div>\n` +
+      `  </figcaption>\n` +
+      `</figure>\n`
+    );
+  }
+
+  async function insertYouTubeEmbed(yt, targetScope) {
+    const b = bridge();
+    if (!b || !b.insertHtmlBlock) return;
+
+    const initialHtml = buildYouTubeCardHtml(yt);
+    b.insertHtmlBlock(targetScope, initialHtml);
+    b.setStatus("✓ 已插入 YouTube 影片縮圖與播放器（正在讀取影片標題⋯）", "is-saved");
+
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 3500);
+      const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(
+        `https://www.youtube.com/watch?v=${yt.videoId}`
+      )}&format=json`;
+      const res = await fetch(oembedUrl, { signal: ctrl.signal });
+      clearTimeout(timer);
+      if (res.ok) {
+        const info = await res.json();
+        if (info && info.title && b.updateYouTubeTitle) {
+          b.updateYouTubeTitle(yt.videoId, info.title.trim());
+          b.setStatus(`✓ 已插入 YouTube 影片：「${info.title.trim()}」`, "is-saved");
+        }
+      }
+    } catch (_) {
+      // 離線或 oEmbed 無回應時保留預設標題與縮圖播放器
+    }
   }
 
   function esc(str) {

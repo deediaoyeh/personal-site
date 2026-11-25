@@ -1379,9 +1379,25 @@
         flushAll();
         continue;
       }
-      if (/^<\/?(div|section|aside|figure|figcaption|details|summary|table|thead|tbody|tr|td|th|iframe|blockquote|p|ul|ol|li|h[1-6]|hr|br|img|video|audio|a)\b/i.test(t)) {
+      if (/^<\/?(div|section|aside|figure|figcaption|details|summary|table|thead|tbody|tr|td|th|iframe|blockquote|p|ul|ol|li|h[1-6]|hr|br|img|video|audio|a|span)\b/i.test(t)) {
         flushAll();
         out.push(line);
+        continue;
+      }
+      const ytPreviewId = extractYouTubeIdSimple(t);
+      if (ytPreviewId) {
+        flushAll();
+        out.push(
+          `<figure class="yt-media-card" data-yt-id="${escapeAttr(ytPreviewId)}">` +
+            `<div class="yt-player-stage">` +
+            `<img class="yt-thumb-bg" src="https://i.ytimg.com/vi/${escapeAttr(ytPreviewId)}/hqdefault.jpg" alt="YouTube 影片縮圖" loading="lazy" />` +
+            `<iframe class="yt-embed-iframe" src="https://www.youtube.com/embed/${escapeAttr(ytPreviewId)}?rel=0" title="YouTube video player" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>` +
+            `</div>` +
+            `<figcaption class="yt-card-bar">` +
+            `<a class="yt-thumb-mini-wrap" href="${escapeAttr(t)}" target="_blank" rel="noopener noreferrer"><img class="yt-thumb-mini" src="https://i.ytimg.com/vi/${escapeAttr(ytPreviewId)}/mqdefault.jpg" alt="縮圖" loading="lazy" /></a>` +
+            `<div class="yt-card-info"><span class="yt-badge mono-label">YOUTUBE VIDEO</span><a class="yt-card-title" href="${escapeAttr(t)}" target="_blank" rel="noopener noreferrer">${escapeHtml(t)} ↗</a></div>` +
+            `</figcaption></figure>`
+        );
         continue;
       }
       if (t.startsWith("|") && t.endsWith("|")) {
@@ -1443,7 +1459,16 @@
     return s;
   }
 
-  // 對外橋接介面供 studio-media.js 呼叫（插入照片、檔案與雲端硬碟匯入資產）
+  function extractYouTubeIdSimple(rawLine) {
+    const m = String(rawLine || "")
+      .trim()
+      .match(
+        /^https?:\/\/(?:(?:www\.|m\.|music\.)?youtube\.com\/(?:watch\?[^\s]*v=|shorts\/|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})(?:[?&][^\s]*)?$/i
+      );
+    return m ? m[1] : "";
+  }
+
+  // 對外橋接介面供 studio-media.js 呼叫（插入照片、檔案、YouTube 影片與雲端硬碟匯入資產）
   window.__STUDIO_BRIDGE__ = {
     getMediaList: () => state.media || [],
     setMediaList: (list) => {
@@ -1451,6 +1476,68 @@
     },
     updateGitBadge,
     setStatus,
+    insertHtmlBlock(targetScope, htmlMarkup) {
+      if (targetScope === "html-page" || state.activeTab === "html") {
+        const codeTa = document.getElementById("html-code-textarea");
+        insertAtCursor(codeTa, "\n" + htmlMarkup);
+        markDirty("html");
+        updateCodeLineNumbers();
+        if (state.currentWebFile.path.endsWith(".html")) {
+          updateHtmlLiveIframe(state.currentWebFile.path, codeTa.value);
+        }
+        return;
+      }
+
+      if (state.editorMode === "wysiwyg") {
+        const wy = document.getElementById("doc-wysiwyg");
+        wy.focus();
+        const blockWithAfter = htmlMarkup + "<p><br></p>";
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0 && wy.contains(sel.anchorNode)) {
+          document.execCommand("insertHTML", false, blockWithAfter);
+        } else {
+          wy.insertAdjacentHTML("beforeend", blockWithAfter);
+        }
+        document.getElementById("doc-body").value = wy.innerHTML;
+      } else {
+        insertAtCursor(document.getElementById("doc-body"), "\n" + htmlMarkup + "\n");
+      }
+
+      markDirty("content");
+      renderLiveContentPreview();
+    },
+    updateYouTubeTitle(videoId, realTitle) {
+      if (!videoId || !realTitle) return;
+      const safeLabel = `${escapeHtml(realTitle)} ↗`;
+      const defaultLabel = `YouTube 影片 (${escapeHtml(videoId)}) ↗`;
+
+      // 1. 更新視覺化 HTML 畫布中的標題連結與 iframe title
+      const wy = document.getElementById("doc-wysiwyg");
+      if (wy) {
+        wy.querySelectorAll(`[data-yt-title-for="${CSS.escape(videoId)}"]`).forEach((a) => {
+          a.textContent = `${realTitle} ↗`;
+        });
+        wy.querySelectorAll(`.yt-media-card[data-yt-id="${CSS.escape(videoId)}"] iframe`).forEach((ifr) => {
+          ifr.setAttribute("title", realTitle);
+        });
+        if (state.editorMode === "wysiwyg") {
+          document.getElementById("doc-body").value = wy.innerHTML;
+        }
+      }
+
+      // 2. 更新 Markdown / HTML 原始碼文字區與全站 HTML 編輯器中的預設標題字串
+      ["doc-body", "html-code-textarea"].forEach((taId) => {
+        const ta = document.getElementById(taId);
+        if (ta && ta.value.includes(defaultLabel)) {
+          ta.value = ta.value.split(defaultLabel).join(safeLabel);
+          if (taId === "html-code-textarea" && state.currentWebFile.path.endsWith(".html")) {
+            updateHtmlLiveIframe(state.currentWebFile.path, ta.value);
+          }
+        }
+      });
+
+      renderLiveContentPreview();
+    },
     insertAsset(targetScope, asset) {
       const stem = (asset.filename || "").replace(/\.[^.]+$/, "");
       let htmlMarkup = "";
