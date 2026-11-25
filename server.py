@@ -10,6 +10,7 @@ import json
 import mimetypes
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -51,7 +52,57 @@ VIDEO_EXTS = {".mp4", ".webm", ".mov"}
 AUDIO_EXTS = {".mp3", ".m4a", ".wav"}
 
 PROTECTED_CORE_FILES = {"index.html", "styles.css", "theme.custom.css", "app.js"}
-EXCLUDED_STUDIO_FILES = {"studio.html", "studio.css", "studio.js", "studio-media.js"}
+EXCLUDED_STUDIO_FILES = {"studio.html", "studio.css", "studio.js", "studio-media.js", "studio-cloud-client.js"}
+
+# =========================================================================
+# Content Security Policy (CSP) 嚴謹安全標頭定義
+# - script-src 嚴格禁止 unsafe-inline 與 unsafe-eval（認證閘門採用每請求隨機 Nonce）
+# - 允許本機與雲端即時同步 API、Google Fonts、以及媒體上傳 blob:/data: 預覽
+# =========================================================================
+CSP_PUBLIC = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline' blob: https://fonts.googleapis.com; "
+    "font-src 'self' https://fonts.gstatic.com data:; "
+    "img-src 'self' data: blob: https:; "
+    "media-src 'self' blob: https:; "
+    "connect-src 'self' https://deediao-studio.netlify.app https://raw.githubusercontent.com https://script.google.com https://script.googleusercontent.com; "
+    "frame-ancestors 'self'; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self' https://script.google.com https://script.googleusercontent.com"
+)
+
+CSP_STUDIO = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline' blob: https://fonts.googleapis.com; "
+    "font-src 'self' https://fonts.gstatic.com data:; "
+    "img-src 'self' data: blob: https:; "
+    "media-src 'self' blob: https:; "
+    "frame-src 'self' blob:; "
+    "connect-src 'self' https://deediao-studio.netlify.app https://raw.githubusercontent.com https://www.googleapis.com; "
+    "frame-ancestors 'self'; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self'"
+)
+
+CSP_API = "default-src 'none'; frame-ancestors 'none'"
+
+
+def build_auth_gate_csp(nonce: str) -> str:
+    return (
+        "default-src 'self'; "
+        f"script-src 'self' 'nonce-{nonce}'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none'; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
+    )
 FORBIDDEN_STATIC_PREFIXES = (
     "/.studio-auth.json",
     "/.studio-jwt.key",
@@ -430,7 +481,7 @@ def list_editable_web_files() -> list:
 # =========================================================================
 # 嚴謹雙重認證閘門頁面 (未通過認證前絕不載入 studio.html / studio.js)
 # =========================================================================
-def build_auth_gate_html() -> str:
+def build_auth_gate_html(nonce: str) -> str:
     configured = AUTH.is_configured()
     setup_data = None if configured else AUTH.prepare_initial_setup("Deediao")
 
@@ -563,7 +614,7 @@ def build_auth_gate_html() -> str:
   <main class="gate-card">
     {form_html}
   </main>
-  <script>
+  <script nonce="{nonce}">
     (function() {{
       const errEl = document.getElementById("gate-error");
       const setupForm = document.getElementById("setup-form");
@@ -651,8 +702,22 @@ class StudioHandler(SimpleHTTPRequestHandler):
             or self.path.endswith((".json", ".js", ".css", ".md"))
         ):
             self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+
+        custom_csp = getattr(self, "_custom_csp", None)
+        if custom_csp:
+            self.send_header("Content-Security-Policy", custom_csp)
+            self._custom_csp = None
+        elif self.path.startswith("/api/"):
+            self.send_header("Content-Security-Policy", CSP_API)
+        elif self.path.startswith("/studio"):
+            self.send_header("Content-Security-Policy", CSP_STUDIO)
+        else:
+            self.send_header("Content-Security-Policy", CSP_PUBLIC)
+
         self.send_header("X-Frame-Options", "SAMEORIGIN")
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
+        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         super().end_headers()
 
     def _client_ip(self) -> str:
@@ -739,14 +804,16 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 return
             sess = AUTH.validate_session(self._get_session_token())
             if not sess:
-                self._send_html(build_auth_gate_html(), HTTPStatus.OK)
+                nonce = secrets.token_urlsafe(16)
+                self._custom_csp = build_auth_gate_csp(nonce)
+                self._send_html(build_auth_gate_html(nonce), HTTPStatus.OK)
                 return
             if clean_path == "/studio":
                 self.path = "/studio.html"
             super().do_GET()
             return
 
-        if clean_path in ("/studio.js", "/studio.css", "/studio-media.js"):
+        if clean_path in ("/studio.js", "/studio.css", "/studio-media.js", "/studio-cloud-client.js"):
             sess = AUTH.validate_session(self._get_session_token())
             if not sess:
                 self._send_html("401 Unauthorized", HTTPStatus.UNAUTHORIZED)
@@ -1017,8 +1084,12 @@ class StudioHandler(SimpleHTTPRequestHandler):
 
             if clean_path == "/api/studio/sync":
                 sync_script = ROOT_DIR / "scripts" / "sync_cloud.py"
+                qs = parse_qs(parsed.query)
+                cmd = [sys.executable, str(sync_script)]
+                if (qs.get("fast") or ["0"])[0] == "1":
+                    cmd.append("--fast")
                 res = subprocess.run(
-                    [sys.executable, str(sync_script)],
+                    cmd,
                     cwd=str(ROOT_DIR),
                     capture_output=True,
                     text=True,

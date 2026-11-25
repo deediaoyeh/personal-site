@@ -168,31 +168,7 @@ def sync_git_and_netlify(logs: list):
             text=True,
         )
         if remote.returncode == 0 and remote.stdout.strip():
-            # 先 fetch 並以本機版本優先合併，避免遠端自動時間戳衝突
-            subprocess.run(["git", "fetch", "origin", "main"], cwd=str(ROOT_DIR), env=env, capture_output=True)
-            merge = subprocess.run(
-                ["git", "merge", "-X", "ours", "--no-edit", "origin/main"],
-                cwd=str(ROOT_DIR),
-                env=env,
-                capture_output=True,
-                text=True,
-            )
-            if merge.returncode == 0:
-                subprocess.run(
-                    [sys.executable, str(ROOT_DIR / "scripts" / "build_content.py")],
-                    cwd=str(ROOT_DIR),
-                    env=env,
-                    check=True,
-                )
-                subprocess.run(["git", "add", "-A"], cwd=str(ROOT_DIR), env=env, check=True)
-                if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=str(ROOT_DIR), env=env).returncode != 0:
-                    subprocess.run(
-                        ["git", "commit", "-m", "chore: rebuild manifest after remote merge"],
-                        cwd=str(ROOT_DIR),
-                        env=env,
-                        check=True,
-                    )
-
+            # 快速直推：大多數情況直接 fast-forward push（~1.5 秒），僅在遠端有新 commit 時才 fetch + merge 重試
             push = subprocess.run(
                 ["git", "push", "origin", "main"],
                 cwd=str(ROOT_DIR),
@@ -200,8 +176,40 @@ def sync_git_and_netlify(logs: list):
                 capture_output=True,
                 text=True,
             )
+            if push.returncode != 0:
+                subprocess.run(["git", "fetch", "origin", "main"], cwd=str(ROOT_DIR), env=env, capture_output=True)
+                merge = subprocess.run(
+                    ["git", "merge", "-X", "ours", "--no-edit", "origin/main"],
+                    cwd=str(ROOT_DIR),
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                )
+                if merge.returncode == 0:
+                    subprocess.run(
+                        [sys.executable, str(ROOT_DIR / "scripts" / "build_content.py")],
+                        cwd=str(ROOT_DIR),
+                        env=env,
+                        check=True,
+                    )
+                    subprocess.run(["git", "add", "-A"], cwd=str(ROOT_DIR), env=env, check=True)
+                    if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=str(ROOT_DIR), env=env).returncode != 0:
+                        subprocess.run(
+                            ["git", "commit", "-m", "chore: rebuild manifest after remote merge"],
+                            cwd=str(ROOT_DIR),
+                            env=env,
+                            check=True,
+                        )
+                push = subprocess.run(
+                    ["git", "push", "origin", "main"],
+                    cwd=str(ROOT_DIR),
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                )
+
             if push.returncode == 0:
-                logs.append("  ✓ 已成功推送至 GitHub 主站（GitHub Pages 約 30 秒內自動更新完成）！")
+                logs.append("  ✓ 已極速推送至 GitHub 主站（GitHub Pages 與 Netlify 前台將於 1–3 秒內即時同步最新資料）！")
             else:
                 logs.append(f"  ! GitHub 推送失敗：{push.stderr.strip()}")
 
@@ -215,9 +223,29 @@ def sync_git_and_netlify(logs: list):
 
 def main():
     load_env_file()
+    if "--gdrive-only" in sys.argv:
+        logs = []
+        sync_to_gdrive_cli(logs)
+        print("\n".join(logs))
+        return
+
+    fast_mode = "--fast" in sys.argv
     logs = []
     sync_git_and_netlify(logs)
-    sync_to_gdrive_cli(logs)
+    if fast_mode:
+        # 極速模式（存檔自動同步）：背景執行 Google Drive 備份，不阻塞前台即時推送
+        try:
+            subprocess.Popen(
+                [sys.executable, str(Path(__file__).resolve()), "--gdrive-only"],
+                cwd=str(ROOT_DIR),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            logs.append("• Google Drive 雲端硬碟備份已於背景非同步啟動。")
+        except Exception:
+            pass
+    else:
+        sync_to_gdrive_cli(logs)
     print("\n".join(logs))
 
 

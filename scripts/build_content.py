@@ -209,6 +209,7 @@ def bundle_public_site(dest_name: str):
         "app.js",
         "rss.xml",
         "studio.css",
+        "studio-cloud-client.js",
         "studio.js",
         "studio-media.js",
     ):

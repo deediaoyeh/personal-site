@@ -934,3 +934,124 @@
   font-size: 0.72rem;
   color: var(--ink-muted);
 }
+
+
+/* =========================================================================
+   雲端雙重驗證 (2FA) 鎖定閘門 (GitHub Pages & Netlify 公開工作台保護)
+   ========================================================================= */
+html.cloud-auth-locked .studio-topbar,
+html.cloud-auth-locked .studio-workspace {
+  display: none !important;
+}
+
+.cloud-auth-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 18px;
+  background: var(--bg-paper, #f5f2eb);
+  color: var(--ink-primary, #1d1c19);
+}
+
+.cloud-auth-card {
+  width: 100%;
+  max-width: 520px;
+  background: var(--bg-elevated, #faf8f4);
+  border: 1px solid rgba(29, 28, 25, 0.28);
+  padding: 38px 40px;
+}
+
+.cloud-gate-kicker {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  color: var(--accent, #6e5039);
+  margin-bottom: 10px;
+}
+
+.cloud-gate-title {
+  font-family: "Newsreader", "Noto Serif TC", "Songti TC", Georgia, serif;
+  font-size: 1.65rem;
+  font-weight: 500;
+  margin: 0 0 10px;
+}
+
+.cloud-gate-desc {
+  margin: 0 0 22px;
+  font-size: 0.88rem;
+  color: var(--ink-secondary, #534f46);
+  line-height: 1.7;
+}
+
+.cloud-gate-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cloud-gate-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 0.82rem;
+  color: var(--ink-secondary, #534f46);
+}
+
+.cloud-gate-field input {
+  padding: 10px 12px;
+  font-size: 0.95rem;
+  background: var(--bg-paper, #f5f2eb);
+  border: 1px solid rgba(29, 28, 25, 0.3);
+  border-radius: 2px;
+  color: var(--ink-primary, #1d1c19);
+  outline: none;
+  font-family: inherit;
+}
+
+.cloud-gate-field input:focus {
+  border-color: var(--accent, #6e5039);
+}
+
+.cloud-code-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important;
+  letter-spacing: 0.14em;
+  font-size: 1.05rem !important;
+}
+
+.cloud-gate-error {
+  color: #9e3f33;
+  font-size: 0.84rem;
+  min-height: 1.2em;
+}
+
+.cloud-gate-btn {
+  padding: 12px 18px;
+  background: var(--ink-primary, #1d1c19);
+  color: var(--bg-paper, #f5f2eb);
+  border: 1px solid var(--ink-primary, #1d1c19);
+  border-radius: 2px;
+  font-size: 0.92rem;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.cloud-gate-btn:hover {
+  opacity: 0.88;
+}
+
+.cloud-gate-footer {
+  margin-top: 20px;
+  font-size: 0.82rem;
+  color: var(--ink-muted, #857f73);
+}
+
+.cloud-gate-footer a {
+  color: inherit;
+  border-bottom: 1px solid var(--ink-muted, #857f73);
+  text-decoration: none;
+}

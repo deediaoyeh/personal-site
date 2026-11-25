@@ -1181,11 +1181,37 @@
       reloadPreviewIframes();
       state.dirty = false;
       const timeStr = new Date().toLocaleTimeString("zh-TW", { hour12: false });
-      setStatus(`✓ 已於 ${timeStr} 寫入本機網站並更新索引`, "is-saved");
+
+      if (window.__STUDIO_IS_CLOUD__) {
+        setStatus(`✓ 已於 ${timeStr} 即時寫入雲端（前台 1–3 秒內自動同步）`, "is-saved");
+      } else {
+        setStatus(`✓ 已於 ${timeStr} 寫入本機 · 正在極速同步至雲端⋯`, "is-saved");
+        triggerFastAutoSync(timeStr);
+      }
     } catch (err) {
       setStatus(`儲存失敗：${err.message}`, "is-dirty");
     } finally {
       saveBtn.disabled = false;
+    }
+  }
+
+  let autoSyncInFlight = false;
+  async function triggerFastAutoSync(savedTimeStr) {
+    if (autoSyncInFlight || window.__STUDIO_IS_CLOUD__) return;
+    autoSyncInFlight = true;
+    try {
+      const res = await fetch("/api/studio/sync?fast=1", { method: "POST", body: "{}" });
+      const data = await res.json();
+      if (data.ok) {
+        updateGitBadge(data.git);
+        setStatus(`✓ 已於 ${savedTimeStr} 存檔並即時同步雲端（前台 1–3 秒內更新）`, "is-saved");
+      } else {
+        setStatus(`✓ 已寫入本機（雲端同步離線待命，連網後可再按同步）`, "is-saved");
+      }
+    } catch (_) {
+      setStatus(`✓ 已寫入本機（離線模式，連網後可一鍵同步）`, "is-saved");
+    } finally {
+      autoSyncInFlight = false;
     }
   }
 

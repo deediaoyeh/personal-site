@@ -6,9 +6,18 @@
   "use strict";
 
   let CONFIG = window.SITE_CONFIG;
+  const IS_LOCAL_HOST =
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1" ||
+    window.location.hostname === "::1";
+  const LIVE_DATA_ENDPOINT = "https://deediao-studio.netlify.app/api/live-data";
+
   const state = {
     manifest: null,
     contentCache: new Map(),
+    liveSha: null,
+    liveRawBase: null,
+    liveThemeBlobUrl: null,
     essayTag: "全部",
     noteStage: "全部",
     noteTag: "全部",
@@ -30,15 +39,86 @@
   // =========================================================================
   // 初始化
   // =========================================================================
+  function applyLiveThemeCss(cssText) {
+    if (!cssText) return;
+    try {
+      if (state.liveThemeBlobUrl) {
+        URL.revokeObjectURL(state.liveThemeBlobUrl);
+      }
+      const blob = new Blob([cssText], { type: "text/css" });
+      const blobUrl = URL.createObjectURL(blob);
+      state.liveThemeBlobUrl = blobUrl;
+      let link = document.getElementById("live-theme-override");
+      if (!link) {
+        link = document.createElement("link");
+        link.id = "live-theme-override";
+        link.rel = "stylesheet";
+        document.head.appendChild(link);
+      }
+      link.href = blobUrl;
+    } catch (_) {
+      // 略過，保留原有樣式
+    }
+  }
+
+  async function fetchLiveDataSnapshot() {
+    if (IS_LOCAL_HOST) return null;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 4500);
+    try {
+      const res = await fetch(`${LIVE_DATA_ENDPOINT}?t=${Date.now()}`, {
+        cache: "no-store",
+        signal: ctrl.signal
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data || !data.ok) return null;
+      return data;
+    } catch (_) {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async function checkLiveUpdatesSilently() {
+    if (IS_LOCAL_HOST || document.hidden) return;
+    try {
+      const res = await fetch(`${LIVE_DATA_ENDPOINT}?shaOnly=1&t=${Date.now()}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const info = await res.json();
+      if (!info || !info.ok || !info.sha) return;
+      if (state.liveSha && info.sha === state.liveSha) return;
+
+      const snap = await fetchLiveDataSnapshot();
+      if (!snap) return;
+      state.liveSha = snap.sha;
+      state.liveRawBase = snap.rawBase || null;
+      if (snap.config) {
+        window.SITE_CONFIG = snap.config;
+        CONFIG = snap.config;
+      }
+      if (snap.themeCss) {
+        applyLiveThemeCss(snap.themeCss);
+      }
+      if (snap.manifest) {
+        state.manifest = snap.manifest;
+        state.contentCache.clear();
+      }
+      renderShellChrome();
+      await handleRoute(false);
+    } catch (_) {
+      // 離線或暫時無回應時靜默忽略
+    }
+  }
+
   async function refreshLatestSiteConfig() {
     try {
       const bust = Date.now();
-      // 即時更新自訂主題覆寫樣式，避開 CDN 快取
       const customThemeLink = document.querySelector('link[href*="./theme.custom.css"]');
       if (customThemeLink) {
         customThemeLink.href = `./theme.custom.css?t=${bust}`;
       }
-      // 即時載入最新 site.config.js，徹底消除 GitHub Pages / 瀏覽器 10 分鐘快取延遲
       const cfgRes = await fetch(`./site.config.js?t=${bust}`, { cache: "no-store" });
       if (cfgRes.ok) {
         const raw = await cfgRes.text();
@@ -56,15 +136,44 @@
 
   async function init() {
     applyTheme(state.theme);
-    await refreshLatestSiteConfig();
+
+    // 公開雲端站點（GitHub Pages / Netlify）優先從準即時端點拉取最新 Commit 資料（~1 秒反映，無須等建置與 CDN 快取）
+    const liveSnap = await fetchLiveDataSnapshot();
+    if (liveSnap) {
+      state.liveSha = liveSnap.sha;
+      state.liveRawBase = liveSnap.rawBase || null;
+      if (liveSnap.config) {
+        window.SITE_CONFIG = liveSnap.config;
+        CONFIG = liveSnap.config;
+      }
+      if (liveSnap.themeCss) {
+        applyLiveThemeCss(liveSnap.themeCss);
+      }
+      if (liveSnap.manifest) {
+        state.manifest = liveSnap.manifest;
+      }
+    } else {
+      await refreshLatestSiteConfig();
+    }
+
     renderShellChrome();
     bindGlobalEvents();
 
     try {
-      const res = await fetch(`./content/manifest.json?t=${Date.now()}`, { cache: "no-store" });
-      if (!res.ok) throw new Error("無法讀取內容索引檔");
-      state.manifest = await res.json();
-      await handleRoute();
+      if (!state.manifest) {
+        const res = await fetch(`./content/manifest.json?t=${Date.now()}`, { cache: "no-store" });
+        if (!res.ok) throw new Error("無法讀取內容索引檔");
+        state.manifest = await res.json();
+      }
+      await handleRoute(true);
+
+      // 公開站點：切回分頁或每 15 秒輕量檢查 GitHub 最新 SHA，有變更即自動無縫刷新
+      if (!IS_LOCAL_HOST) {
+        document.addEventListener("visibilitychange", () => {
+          if (!document.hidden) checkLiveUpdatesSilently();
+        });
+        setInterval(checkLiveUpdatesSilently, 15000);
+      }
     } catch (err) {
       document.getElementById("app-main").innerHTML = `
         <div class="page-header">
@@ -114,7 +223,7 @@
   // =========================================================================
   // 路由控制
   // =========================================================================
-  async function handleRoute() {
+  async function handleRoute(shouldScrollTop = true) {
     const hash = window.location.hash || "#/";
     const parts = hash.replace(/^#\/?/, "").split("/").filter(Boolean);
     const route = parts[0] || "home";
@@ -151,7 +260,9 @@
       renderHome(mainEl);
     }
 
-    window.scrollTo({ top: 0, behavior: "instant" });
+    if (shouldScrollTop) {
+      window.scrollTo({ top: 0, behavior: "instant" });
+    }
     bindNewsletterForms();
   }
 
@@ -749,11 +860,25 @@
     if (state.contentCache.has(path)) {
       return state.contentCache.get(path);
     }
-    const ver = encodeURIComponent(state.manifest?.updatedAt || Date.now());
-    const sep = path.includes("?") ? "&" : "?";
-    const res = await fetch(`${path}${sep}v=${ver}`, { cache: "no-store" });
-    if (!res.ok) throw new Error(`無法載入內容：${path}`);
-    const text = await res.text();
+    let text = null;
+    if (!IS_LOCAL_HOST && state.liveRawBase) {
+      try {
+        const rel = path.replace(/^\.?\//, "");
+        const liveRes = await fetch(`${state.liveRawBase}/${rel}`, { cache: "no-store" });
+        if (liveRes.ok) {
+          text = await liveRes.text();
+        }
+      } catch (_) {
+        // 退回靜態檔案路徑
+      }
+    }
+    if (text === null) {
+      const ver = encodeURIComponent(state.manifest?.updatedAt || Date.now());
+      const sep = path.includes("?") ? "&" : "?";
+      const res = await fetch(`${path}${sep}v=${ver}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`無法載入內容：${path}`);
+      text = await res.text();
+    }
     state.contentCache.set(path, text);
     return text;
   }

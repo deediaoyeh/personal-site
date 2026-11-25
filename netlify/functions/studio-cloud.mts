@@ -48,6 +48,7 @@ function corsHeaders(req: Request): Record<string, string> {
   const headers: Record<string, string> = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
   };
   if (ALLOWED_ORIGINS.has(origin)) {
     headers["Access-Control-Allow-Origin"] = origin;
