@@ -17,7 +17,7 @@
 | **Drive 筆記子資料夾** | `notes` (`1fv4vDPgjNKhPqSvZtYrdm9AC47bbkwOB`) | 已上傳初始 4 張知識卡片 `.md` |
 | **Drive 電子報子資料夾** | `letters` (`1dDJ53xY7N7bCSNSkRLHub82WJ7d9kqPQ`) | 已上傳初始 2 期電子報 `.md` |
 | **GitHub 預設對應帳號** | `deediaoyeh` (`https://github.com/deediaoyeh/personal-site`) | 本機已初始化獨立 Git `main` 分支並附 GitHub Actions |
-| **Netlify 備份站專案** | `deediao-studio` (Site ID: `eb87f73c-c435-4e6a-82b5-1e649fa2543b`) | 已建立於 `deediao` 團隊下，對應網址 `https://deediao-studio.netlify.app` |
+| **Netlify 備份站專案** | `deediao-studio` (Site ID: `eb87f73c-c435-4e6a-82b5-1e649fa2543b`) | **已正式部署上線**（`https://deediao-studio.netlify.app`，Deploy ID: `6b0629bdbf91524657ad0454`） |
 
 ---
 
@@ -95,8 +95,9 @@
    - 支援直接以帶行號程式碼編輯器修改 `index.html`、`styles.css`、`theme.custom.css`，並支援 **「＋ 新增獨立 HTML 網頁」**（自動套用靜謐書齋頁首與樣式骨架），右側配備即時渲染預覽與「桌面寬度／手機 390px」響應式切換。
 3. **GitHub 遠端倉庫預設綁定**：
    - 本機 Git 已設定預設 `origin` 為 `https://github.com/deediaoyeh/personal-site.git`（對應 GitHub Pages 主站網址：`https://deediaoyeh.github.io/personal-site/`），並於「電子報與同步」分頁新增遠端倉庫網址修改與綁定介面。
-4. **打包 Netlify 首次部署套件**：
-   - 因本機未安裝 Node.js (`npx`) 且內建瀏覽器尚未登入 `app.netlify.com`，已預先產出乾淨正式版壓縮包 `/Users/deediao/Downloads/Project/personal-site-deploy.zip` 供拖曳上傳或登入後自動上傳，完成首次發佈後 `https://deediao-studio.netlify.app/` 即可正式顯示內容。
+4. **完成 Netlify 備份站首次正式部署（2026-11-25 08:20）**：
+   - 於暫存區配置免安裝版 Node.js (`v22.14.0` arm64)，執行官方 `@netlify/mcp` 正式部署，成功將全站發佈上線至 **`https://deediao-studio.netlify.app`**（Deploy ID：`6b0629bdbf91524657ad0454`，狀態：`ready`）。
+
 
 
 
