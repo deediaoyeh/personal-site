@@ -109,6 +109,31 @@ def sync_to_gdrive_cli(logs: list):
 
     logs.append(f"  ✓ Google Drive 同步完成（更新/上傳 {synced_count} 篇，清理舊檔 {removed_count} 篇）。")
 
+    # 同步備份 assets/uploads 照片與附件至 Google Drive
+    uploads_dir = ROOT_DIR / "assets" / "uploads"
+    media_files = [p for p in sorted(uploads_dir.glob("*")) if p.is_file() and not p.name.startswith(".")] if uploads_dir.exists() else []
+    if media_files:
+        root_ls = subprocess.run([gdrive_bin, "readonly", "ls", DRIVE_FOLDERS["root"], "--json"], capture_output=True, text=True)
+        assets_folder_id = ""
+        if root_ls.returncode == 0 and root_ls.stdout.strip():
+            for e in json.loads(root_ls.stdout):
+                if e.get("name") == "assets" and e.get("mimeType") == "application/vnd.google-apps.folder":
+                    assets_folder_id = e["id"]
+                    break
+        if not assets_folder_id:
+            mk = subprocess.run([gdrive_bin, "mutate", "mkdir", "assets", "--parent", DRIVE_FOLDERS["root"]], capture_output=True, text=True)
+            m_id = mk.stdout.split("ID:")[-1].strip().rstrip(")") if "ID:" in mk.stdout else ""
+            assets_folder_id = m_id
+        if assets_folder_id:
+            a_ls = subprocess.run([gdrive_bin, "readonly", "ls", assets_folder_id, "--json"], capture_output=True, text=True)
+            a_map = {e["name"]: e["id"] for e in (json.loads(a_ls.stdout) if a_ls.returncode == 0 and a_ls.stdout.strip() else [])}
+            for mf in media_files:
+                if mf.name in a_map:
+                    subprocess.run([gdrive_bin, "mutate", "update", a_map[mf.name], str(mf)], capture_output=True)
+                else:
+                    subprocess.run([gdrive_bin, "mutate", "upload", str(mf), "--parent", assets_folder_id], capture_output=True)
+            logs.append(f"  ✓ 已同步備份 {len(media_files)} 個照片／附件檔案至 Google Drive (PersonalSite-Vault/assets)。")
+
 
 def sync_git_and_netlify(logs: list):
     env = build_git_env()

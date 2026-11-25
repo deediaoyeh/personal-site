@@ -29,6 +29,7 @@
     <div class="studio-actions">
       <a href="./" target="_blank" class="studio-btn studio-btn-ghost">前台預覽 ↗</a>
       <button type="button" id="global-save-btn" class="studio-btn studio-btn-primary">儲存 ⌘S</button>
+      <button type="button" id="lock-studio-btn" class="studio-btn studio-btn-ghost" title="登出並鎖定雙重驗證工作台">鎖定登出</button>
     </div>
   </header>
 
@@ -141,6 +142,10 @@
             <button type="button" class="tool-btn" data-md="table">表格範本</button>
             <button type="button" class="tool-btn" data-md="callout">HTML 重點匣</button>
             <button type="button" class="tool-btn" data-md="hr">分隔線</button>
+            <span class="toolbar-sep" aria-hidden="true">|</span>
+            <button type="button" class="tool-btn media-accent-btn" data-trigger-photo="content">＋插入照片</button>
+            <button type="button" class="tool-btn media-accent-btn" data-trigger-file="content">＋加入檔案</button>
+            <button type="button" class="tool-btn media-accent-btn" data-open-gdrive="content">Google 雲端硬碟</button>
           </div>
 
           <!-- 工具列 B：視覺化 HTML (WYSIWYG) 與 HTML 原始碼工具 -->
@@ -159,6 +164,10 @@
             <button type="button" class="tool-btn" data-html-block="twocol">＋雙欄卡片</button>
             <button type="button" class="tool-btn" data-html-block="details">＋摺疊問答</button>
             <button type="button" class="tool-btn" data-html-block="table">＋表格</button>
+            <span class="toolbar-sep" aria-hidden="true">|</span>
+            <button type="button" class="tool-btn media-accent-btn" data-trigger-photo="content">＋插入照片</button>
+            <button type="button" class="tool-btn media-accent-btn" data-trigger-file="content">＋加入檔案</button>
+            <button type="button" class="tool-btn media-accent-btn" data-open-gdrive="content">Google 雲端硬碟</button>
             <button type="button" class="tool-btn" data-wysiwyg="clean">清除格式</button>
           </div>
 
@@ -212,6 +221,10 @@
             <button type="button" class="tool-btn" data-html-snippet="twocol">＋雙欄格線</button>
             <button type="button" class="tool-btn" data-html-snippet="details">＋摺疊區塊</button>
             <button type="button" class="tool-btn" data-html-snippet="cta">＋訂閱/行動卡</button>
+            <span class="toolbar-sep" aria-hidden="true">|</span>
+            <button type="button" class="tool-btn media-accent-btn" data-trigger-photo="html-page">＋插入照片</button>
+            <button type="button" class="tool-btn media-accent-btn" data-trigger-file="html-page">＋加入檔案</button>
+            <button type="button" class="tool-btn media-accent-btn" data-open-gdrive="html-page">Google 雲端硬碟</button>
             <button type="button" id="delete-html-page-btn" class="tool-btn danger-btn" hidden>刪除此網頁</button>
           </div>
 
@@ -551,6 +564,51 @@
     </section>
   </main>
 
+  <!-- 隱藏本機圖片與檔案選擇器（亦支援直接拖曳檔案進任何編輯區） -->
+  <input type="file" id="hidden-photo-input" accept="image/*" multiple hidden />
+  <input type="file" id="hidden-file-input" multiple hidden />
+
+  <!-- Google 雲端硬碟 & 本站媒體櫃選擇視窗 -->
+  <div id="media-drive-modal" class="studio-modal-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="media-modal-title">
+    <div class="studio-modal-dialog">
+      <div class="studio-modal-header">
+        <div>
+          <span class="mono-label" style="font-size:0.72rem; color:var(--accent);">MEDIA & GOOGLE DRIVE VAULT</span>
+          <h2 id="media-modal-title" class="studio-modal-title">選擇雲端硬碟檔案或已上傳照片</h2>
+        </div>
+        <button type="button" id="close-media-modal-btn" class="studio-btn studio-btn-ghost">關閉 ESC</button>
+      </div>
+
+      <div class="modal-source-tabs">
+        <button type="button" class="mode-seg-btn is-active" data-media-tab="gdrive">Google 雲端硬碟 (deediao@gmail.com)</button>
+        <button type="button" class="mode-seg-btn" data-media-tab="local">本站媒體櫃 (assets/uploads)</button>
+      </div>
+
+      <!-- 分頁 A：Google 雲端硬碟瀏覽與搜尋 -->
+      <div id="media-pane-gdrive" class="modal-pane-body">
+        <div class="gdrive-controls-bar">
+          <button type="button" class="tool-btn is-active" id="gdrive-root-btn">雲端根目錄</button>
+          <button type="button" class="tool-btn" id="gdrive-recent-btn">最近使用</button>
+          <button type="button" class="tool-btn" id="gdrive-up-btn" hidden>← 返回上層</button>
+          <span id="gdrive-breadcrumb" class="mono-label gdrive-crumb">/ 根目錄</span>
+          <input type="search" id="gdrive-search-input" class="studio-field-input gdrive-search" placeholder="輸入檔名按 Enter 搜尋雲端硬碟⋯" />
+        </div>
+        <div id="gdrive-items-container" class="media-items-list"></div>
+      </div>
+
+      <!-- 分頁 B：本站已匯入媒體櫃 + 拖曳區 -->
+      <div id="media-pane-local" class="modal-pane-body" hidden>
+        <div id="modal-dropzone" class="modal-dropzone">
+          將照片或檔案拖曳至此處，或點擊
+          <button type="button" class="tool-btn media-accent-btn" id="modal-browse-btn">選擇本機檔案</button>
+          直接加入網站媒體櫃
+        </div>
+        <div id="local-media-container" class="media-items-grid"></div>
+      </div>
+    </div>
+  </div>
+
   <script src="./studio.js"></script>
+  <script src="./studio-media.js"></script>
 </body>
 </html>

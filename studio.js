@@ -66,6 +66,8 @@
     theme: null,
     manifest: { items: [] },
     webFiles: [],
+    media: [],
+    csrfToken: "",
     currentWebFile: { path: "index.html", isCore: true },
     filterType: "all",
     searchQuery: "",
@@ -88,6 +90,22 @@
   // =========================================================================
   // 啟動載入
   // =========================================================================
+  // 攔截同源 /api/studio/* 寫入請求自動附加 X-Studio-CSRF 權杖，若階段逾時則自動回導至雙重認證頁
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = async function (input, initOpts) {
+    const urlStr = typeof input === "string" ? input : input.url || "";
+    const opts = initOpts ? { ...initOpts } : {};
+    const method = (opts.method || "GET").toUpperCase();
+    if (urlStr.startsWith("/api/studio/") && method !== "GET" && state.csrfToken) {
+      opts.headers = { ...(opts.headers || {}), "X-Studio-CSRF": state.csrfToken };
+    }
+    const resp = await nativeFetch(input, opts);
+    if (resp.status === 401 && urlStr.startsWith("/api/studio/")) {
+      window.location.reload();
+    }
+    return resp;
+  };
+
   async function init() {
     bindTabs();
     bindContentStudioEvents();
@@ -97,13 +115,15 @@
 
     try {
       const res = await fetch("/api/studio/bootstrap");
-      if (!res.ok) throw new Error("請透過 start-studio.command 或 python3 server.py 啟動工作台");
+      if (!res.ok) throw new Error("請先通過雙重認證後進入工作台");
       const data = await res.json();
 
+      state.csrfToken = data.csrfToken || "";
       state.config = data.config;
       state.theme = data.theme;
       state.manifest = data.manifest;
       state.webFiles = data.webFiles || [];
+      state.media = data.media || [];
 
       populateConfigForms();
       populateThemeForm();
@@ -1333,7 +1353,7 @@
         flushAll();
         continue;
       }
-      if (/^<\/?(div|section|aside|figure|figcaption|details|summary|table|thead|tbody|tr|td|th|iframe|blockquote|p|ul|ol|li|h[1-6]|hr|br)\b/i.test(t)) {
+      if (/^<\/?(div|section|aside|figure|figcaption|details|summary|table|thead|tbody|tr|td|th|iframe|blockquote|p|ul|ol|li|h[1-6]|hr|br|img|video|audio|a)\b/i.test(t)) {
         flushAll();
         out.push(line);
         continue;
@@ -1387,11 +1407,69 @@
     s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
     s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
     s = s.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+    s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, url) => {
+      const cap = alt ? `<figcaption>${alt}</figcaption>` : "";
+      return `<figure class="craft-figure"><img src="${url}" alt="${alt}" loading="lazy" />${cap}</figure>`;
+    });
     s = s.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, slug, label) => {
       return `<a href="#/notes/${encodeURIComponent(slug.trim())}" class="wikilink">${label || slug}</a>`;
     });
     return s;
   }
+
+  // 對外橋接介面供 studio-media.js 呼叫（插入照片、檔案與雲端硬碟匯入資產）
+  window.__STUDIO_BRIDGE__ = {
+    getMediaList: () => state.media || [],
+    setMediaList: (list) => {
+      state.media = list || [];
+    },
+    updateGitBadge,
+    setStatus,
+    insertAsset(targetScope, asset) {
+      const stem = (asset.filename || "").replace(/\.[^.]+$/, "");
+      let htmlMarkup = "";
+      if (asset.kind === "image") {
+        htmlMarkup = `<figure class="craft-figure">\n  <img src="${escapeAttr(asset.url)}" alt="${escapeAttr(stem)}" loading="lazy" />\n  <figcaption>${escapeHtml(stem)}</figcaption>\n</figure>\n`;
+      } else if (asset.kind === "video") {
+        htmlMarkup = `<video class="craft-video" controls src="${escapeAttr(asset.url)}"></video>\n`;
+      } else if (asset.kind === "audio") {
+        htmlMarkup = `<audio class="craft-audio" controls src="${escapeAttr(asset.url)}"></audio>\n`;
+      } else {
+        htmlMarkup = `<a class="file-attachment-card" href="${escapeAttr(asset.url)}" download="${escapeAttr(asset.filename)}">\n  <span class="file-attachment-left">\n    <span class="file-ext-badge">${escapeHtml(asset.ext || "FILE")}</span>\n    <span class="file-attachment-name">${escapeHtml(asset.filename)}</span>\n  </span>\n  <span class="file-attachment-meta">${escapeHtml(asset.sizeLabel || "")} · 下載 ↓</span>\n</a>\n`;
+      }
+
+      if (targetScope === "html-page" || state.activeTab === "html") {
+        const codeTa = document.getElementById("html-code-textarea");
+        insertAtCursor(codeTa, "\n" + htmlMarkup);
+        markDirty("html");
+        updateCodeLineNumbers();
+        if (state.currentWebFile.path.endsWith(".html")) {
+          updateHtmlLiveIframe(state.currentWebFile.path, codeTa.value);
+        }
+        return;
+      }
+
+      // 插入至內容寫作台 (視覺化 HTML / HTML 原始碼 / Markdown)
+      if (state.editorMode === "wysiwyg") {
+        const wy = document.getElementById("doc-wysiwyg");
+        wy.focus();
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0 && wy.contains(sel.anchorNode)) {
+          document.execCommand("insertHTML", false, htmlMarkup);
+        } else {
+          wy.insertAdjacentHTML("beforeend", htmlMarkup);
+        }
+        document.getElementById("doc-body").value = wy.innerHTML;
+      } else if (state.editorMode === "markdown" && asset.kind === "image") {
+        insertAtCursor(document.getElementById("doc-body"), `\n![${stem}](${asset.url})\n`);
+      } else {
+        insertAtCursor(document.getElementById("doc-body"), "\n" + htmlMarkup);
+      }
+
+      markDirty("content");
+      renderLiveContentPreview();
+    }
+  };
 
   function todayStr() {
     return new Date().toISOString().slice(0, 10);

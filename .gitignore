@@ -1,6 +1,9 @@
 .DS_Store
 *.log
 .sync.env
+.studio-auth.json
+.studio-audit.log
+dist_public/
 .netlify
 .local-bin/
 __pycache__/

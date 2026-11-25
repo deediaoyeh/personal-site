@@ -8,9 +8,11 @@ build_content.py — 知識庫內容同步與索引生成器
 3. 自動產生前端讀取用的 content/manifest.json 與標準訂閱源 rss.xml。
 """
 
+import argparse
 import json
 import os
 import re
+import shutil
 import sys
 import urllib.request
 from datetime import datetime
@@ -190,10 +192,40 @@ def build_manifest_and_rss():
     print(f"索引建置完成：共收錄 {len(items)} 篇內容 → content/manifest.json & rss.xml")
 
 
+def bundle_public_site(dest_name: str):
+    """僅打包對外公開網站所需檔案，徹底排除本機編輯工作台 (studio.* / server.py / scripts / .studio-*)"""
+    dest = (ROOT_DIR / dest_name).resolve()
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.mkdir(parents=True, exist_ok=True)
+
+    excluded_html = {"studio.html"}
+    for html_file in ROOT_DIR.glob("*.html"):
+        if html_file.name not in excluded_html:
+            shutil.copy2(html_file, dest / html_file.name)
+
+    for static_name in ("styles.css", "theme.custom.css", "site.config.js", "app.js", "rss.xml"):
+        src = ROOT_DIR / static_name
+        if src.exists():
+            shutil.copy2(src, dest / static_name)
+
+    for folder_name in ("content", "assets", "pages"):
+        src_dir = ROOT_DIR / folder_name
+        if src_dir.exists():
+            shutil.copytree(src_dir, dest / folder_name)
+
+    print(f"公開發佈套件已產生至：{dest_name}/（已隔離排除離線編輯工作台檔案）")
+
+
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--bundle-public", default="", help="輸出排除編輯器的乾淨公開目錄")
+    args = parser.parse_args()
     try:
         sync_from_google_workspace()
         build_manifest_and_rss()
+        if args.bundle_public:
+            bundle_public_site(args.bundle_public)
     except Exception as exc:
         print(f"[錯誤] {exc}", file=sys.stderr)
         sys.exit(1)

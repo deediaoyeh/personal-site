@@ -966,6 +966,101 @@ details.craft-details summary {
   border: 1px solid var(--rule);
 }
 
+/* 照片圖說框、影音與附件下載卡（靜謐書齋風格） */
+.prose figure,
+.craft-figure {
+  margin: 2em 0;
+}
+
+.prose figure img,
+.craft-figure img,
+.prose img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--rule);
+  margin: 0 auto;
+}
+
+.prose figcaption,
+.craft-figure figcaption {
+  margin-top: 10px;
+  font-size: 0.84rem;
+  color: var(--ink-muted);
+  text-align: center;
+  line-height: 1.6;
+}
+
+.prose a.file-attachment-card,
+a.file-attachment-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 1.5em 0;
+  padding: 14px 18px;
+  background-color: var(--bg-subtle);
+  border: 1px solid var(--rule-strong);
+  color: var(--ink-primary);
+  text-decoration: none;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.prose a.file-attachment-card:hover,
+a.file-attachment-card:hover {
+  border-color: var(--accent);
+  background-color: var(--bg-elevated);
+}
+
+.file-attachment-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.file-ext-badge {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  padding: 3px 8px;
+  border: 1px solid var(--rule-strong);
+  background-color: var(--bg-paper);
+  color: var(--accent);
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.file-attachment-name {
+  font-weight: 500;
+  font-size: 0.94rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-attachment-meta {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.76rem;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.prose video,
+.craft-video {
+  display: block;
+  max-width: 100%;
+  margin: 1.8em 0;
+  border: 1px solid var(--rule);
+}
+
+.prose audio,
+.craft-audio {
+  display: block;
+  width: 100%;
+  margin: 1.4em 0;
+}
+
 /* 雙向連結區 (Backlinks) */
 .backlinks-box {
   margin-top: 56px;

@@ -904,8 +904,8 @@
         flushTable();
       }
 
-      // 原生支援在 Markdown 中直接撰寫 HTML 區塊標籤
-      if (/^<\/?(div|section|aside|figure|figcaption|details|summary|table|thead|tbody|tr|td|th|iframe|blockquote|p|ul|ol|li|h[1-6]|hr|br)\b/i.test(trimmed)) {
+      // 原生支援在 Markdown 中直接撰寫 HTML 區塊與媒體標籤
+      if (/^<\/?(div|section|aside|figure|figcaption|details|summary|table|thead|tbody|tr|td|th|iframe|blockquote|p|ul|ol|li|h[1-6]|hr|br|img|video|audio|a)\b/i.test(trimmed)) {
         flushAll();
         out.push(line);
         continue;
@@ -997,6 +997,12 @@
         : "notes";
       const label = customLabel ? customLabel.trim() : found ? found.title : cleanSlug;
       return `<a href="#/${routePrefix}/${encodeURIComponent(cleanSlug)}" class="wikilink">${label}</a>`;
+    });
+
+    // 圖片語法 ![alt](url)
+    s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, url) => {
+      const cap = alt ? `<figcaption>${alt}</figcaption>` : "";
+      return `<figure class="craft-figure"><img src="${url}" alt="${alt}" loading="lazy" />${cap}</figure>`;
     });
 
     // 一般連結 [text](url)

@@ -1,39 +1,68 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-server.py — 個人品牌網站本機伺服器 ＋ 離線編輯工作台後端 (100% Python 標準庫，零外部依賴，完全支援離線運作)
-
-提供 API：
-- GET  /api/studio/bootstrap      → 讀取 site.config.js、theme.custom.css、manifest.json 與環境狀態
-- POST /api/studio/config         → 儲存網站門面、關於頁、電子報等全域設定 (寫入 site.config.js)
-- POST /api/studio/theme          → 儲存網站視覺色彩、字級與版面寬度設定 (寫入 theme.custom.css + theme.json)
-- GET  /api/studio/item?type=&slug= → 讀取單篇 Markdown 的結構化欄位與內文
-- POST /api/studio/item           → 新增或更新長文 / 筆記 / 電子報 (.md)，並自動重建 manifest.json 與 rss.xml
-- DELETE /api/studio/item         → 刪除指定文章並自動重建索引
-- POST /api/studio/sync           → 連網時手動觸發同步（同步至 Google Drive + Git commit/push + Netlify Hook）
+server.py — 個人品牌網站本機伺服器 ＋ 嚴謹雙重認證 (PBKDF2 + TOTP 2FA) 離線編輯工作台後端
+100% Python 標準庫實作，支援離線認證、CSRF 防護、防暴力破解、照片與檔案拖曳上傳及 Google Drive 雲端硬碟選檔匯入。
 """
 
+import base64
 import json
+import mimetypes
 import os
 import re
+import shutil
 import subprocess
 import sys
+from datetime import datetime
 from http import HTTPStatus
+from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 ROOT_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT_DIR / "scripts"))
+from security import StudioAuthManager  # noqa: E402
+
 CONTENT_DIR = ROOT_DIR / "content"
+UPLOADS_DIR = ROOT_DIR / "assets" / "uploads"
 CONFIG_JS_PATH = ROOT_DIR / "site.config.js"
 THEME_CSS_PATH = ROOT_DIR / "theme.custom.css"
 THEME_JSON_PATH = ROOT_DIR / "theme.config.json"
+
+AUTH = StudioAuthManager(ROOT_DIR)
+COOKIE_NAME = "__studio_session"
 
 TYPE_TO_FOLDER = {
     "essay": CONTENT_DIR / "essays",
     "note": CONTENT_DIR / "notes",
     "letter": CONTENT_DIR / "letters",
 }
+
+ALLOWED_UPLOAD_EXTS = {
+    ".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg", ".avif", ".heic",
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+    ".csv", ".txt", ".md", ".zip", ".epub",
+    ".mp4", ".webm", ".mov", ".mp3", ".m4a", ".wav",
+}
+
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg", ".avif"}
+VIDEO_EXTS = {".mp4", ".webm", ".mov"}
+AUDIO_EXTS = {".mp3", ".m4a", ".wav"}
+
+PROTECTED_CORE_FILES = {"index.html", "styles.css", "theme.custom.css", "app.js"}
+EXCLUDED_STUDIO_FILES = {"studio.html", "studio.css", "studio.js", "studio-media.js"}
+FORBIDDEN_STATIC_PREFIXES = (
+    "/.studio-auth.json",
+    "/.studio-audit.log",
+    "/.sync.env",
+    "/.git",
+    "/.netlify",
+    "/.local-bin",
+    "/server.py",
+    "/scripts/",
+    "/google/",
+)
 
 DEFAULT_THEME = {
     "preset": "warm-paper",
@@ -51,28 +80,181 @@ DEFAULT_THEME = {
 }
 
 
+# =========================================================================
+# 檔案與設定輔助函式
+# =========================================================================
+def format_size(num_bytes: int) -> str:
+    if num_bytes < 1024:
+        return f"{num_bytes} B"
+    if num_bytes < 1024 * 1024:
+        return f"{num_bytes / 1024:.1f} KB"
+    return f"{num_bytes / (1024 * 1024):.2f} MB"
+
+
+def classify_ext(ext: str) -> str:
+    ext = ext.lower()
+    if ext in IMAGE_EXTS:
+        return "image"
+    if ext in VIDEO_EXTS:
+        return "video"
+    if ext in AUDIO_EXTS:
+        return "audio"
+    return "file"
+
+
+def sanitize_upload_filename(raw_name: str) -> str:
+    p = Path(raw_name.strip() or "upload.bin")
+    ext = p.suffix.lower()
+    stem = re.sub(r"[^\w\u4e00-\u9fa5\-]+", "-", p.stem).strip("-") or "file"
+    return f"{stem[:60]}{ext}"
+
+
+def unique_upload_path(filename: str) -> Path:
+    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    clean = sanitize_upload_filename(filename)
+    candidate = UPLOADS_DIR / clean
+    if not candidate.exists():
+        return candidate
+    stem = candidate.stem
+    ext = candidate.suffix
+    ts = datetime.now().strftime("%H%M%S")
+    return UPLOADS_DIR / f"{stem}-{ts}{ext}"
+
+
+def list_uploaded_media() -> list:
+    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    items = []
+    for f in sorted(UPLOADS_DIR.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+        if not f.is_file() or f.name.startswith("."):
+            continue
+        st = f.stat()
+        items.append(
+            {
+                "filename": f.name,
+                "url": f"./assets/uploads/{f.name}",
+                "size": st.st_size,
+                "sizeLabel": format_size(st.st_size),
+                "ext": f.suffix.lstrip(".").upper() or "FILE",
+                "kind": classify_ext(f.suffix),
+                "updatedAt": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
+            }
+        )
+    return items
+
+
+def find_gdrive_bin() -> str:
+    candidates = [
+        shutil.which("gdrive"),
+        "/Users/deediao/.gemini/antigravity/bin/gdrive",
+    ]
+    for c in candidates:
+        if c and Path(c).exists():
+            return c
+    return ""
+
+
+def list_gdrive_items(folder_id: str, query: str, mode: str) -> dict:
+    gdrive_bin = find_gdrive_bin()
+    if not gdrive_bin:
+        return {"ok": False, "message": "本機未偵測到 gdrive CLI 工具，請確認已啟用 Google Drive 外掛。"}
+
+    if query:
+        cmd = [gdrive_bin, "readonly", "search", "--name-contains", query, "--max", "40", "--json"]
+    elif mode == "recent":
+        cmd = [gdrive_bin, "readonly", "recent", "--max", "35", "--json"]
+    elif folder_id and folder_id != "root":
+        cmd = [gdrive_bin, "readonly", "ls", folder_id, "--max", "60", "--json"]
+    else:
+        cmd = [gdrive_bin, "readonly", "ls", "--max", "60", "--json"]
+
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or "無法讀取 Google Drive").strip()
+        return {"ok": False, "message": f"Google Drive 讀取失敗：{err}"}
+
+    raw_list = json.loads(proc.stdout or "[]") if proc.stdout.strip() else []
+    folders = []
+    files = []
+    for entry in raw_list:
+        mime = entry.get("mimeType", "")
+        is_folder = mime == "application/vnd.google-apps.folder"
+        size_int = int(entry.get("size") or 0)
+        item = {
+            "id": entry.get("id", ""),
+            "name": entry.get("name", ""),
+            "mimeType": mime,
+            "isFolder": is_folder,
+            "size": size_int,
+            "sizeLabel": "資料夾" if is_folder else (format_size(size_int) if size_int else "雲端文件"),
+            "modifiedTime": (entry.get("modifiedTime") or "")[:10],
+            "isImage": mime.startswith("image/"),
+        }
+        if is_folder:
+            folders.append(item)
+        else:
+            files.append(item)
+
+    return {"ok": True, "items": folders + files}
+
+
+def import_gdrive_file(file_id: str, name: str, mime_type: str) -> dict:
+    gdrive_bin = find_gdrive_bin()
+    if not gdrive_bin:
+        raise RuntimeError("找不到 gdrive CLI 工具")
+
+    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    # Google 原生文件（Docs / Sheets / Slides）匯出為 PDF 供訪客下載閱讀
+    if mime_type.startswith("application/vnd.google-apps."):
+        base_name = sanitize_upload_filename(Path(name).stem + ".pdf")
+        dest = unique_upload_path(base_name)
+        proc = subprocess.run(
+            [gdrive_bin, "readonly", "export", file_id, str(dest), "--format", "pdf"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    else:
+        ext = Path(name).suffix.lower()
+        if not ext:
+            guessed = mimetypes.guess_extension(mime_type) or ".bin"
+            name = f"{name}{guessed}"
+        dest = unique_upload_path(name)
+        proc = subprocess.run(
+            [gdrive_bin, "readonly", "download", file_id, "--out", str(dest)],
+            capture_output=True,
+            text=True,
+            timeout=90,
+        )
+
+    if proc.returncode != 0 or not dest.exists():
+        raise RuntimeError((proc.stderr or proc.stdout or "Google Drive 檔案下載失敗").strip())
+
+    st = dest.stat()
+    return {
+        "ok": True,
+        "filename": dest.name,
+        "url": f"./assets/uploads/{dest.name}",
+        "size": st.st_size,
+        "sizeLabel": format_size(st.st_size),
+        "ext": dest.suffix.lstrip(".").upper() or "FILE",
+        "kind": classify_ext(dest.suffix),
+    }
+
+
 def read_site_config() -> dict:
     if not CONFIG_JS_PATH.exists():
         return {}
     raw = CONFIG_JS_PATH.read_text(encoding="utf-8")
-    # 擷取 window.SITE_CONFIG = { ... };
     match = re.search(r"window\.SITE_CONFIG\s*=\s*(\{[\s\S]*\})\s*;?\s*$", raw)
     if not match:
         return {}
     js_obj = match.group(1)
-    # 若已是合法 JSON 直接解析，否則透過簡易轉換處理未加引號的 key 與單行註解
     try:
         return json.loads(js_obj)
     except json.JSONDecodeError:
-        cleaned_lines = []
-        for line in js_obj.splitlines():
-            # 移除非網址內的 // 註解
-            line_no_comment = re.sub(r"(?<!:)//.*$", "", line)
-            cleaned_lines.append(line_no_comment)
+        cleaned_lines = [re.sub(r"(?<!:)//.*$", "", l) for l in js_obj.splitlines()]
         cleaned = "\n".join(cleaned_lines)
-        # 為所有物件屬性名稱補上雙引號（支援單行與多行物件，同時避開字串內的冒號）
         cleaned = re.sub(r'([{,]\s*)([a-zA-Z_]\w*)\s*:', r'\1"\2":', cleaned)
-        # 移除結尾多餘逗號
         cleaned = re.sub(r",(\s*[}\]])", r"\1", cleaned)
         return json.loads(cleaned)
 
@@ -148,18 +330,8 @@ def parse_markdown_file(md_path: Path):
 
 def compose_markdown(meta: dict, body: str) -> str:
     ordered_keys = [
-        "title",
-        "slug",
-        "type",
-        "format",
-        "noteCode",
-        "stage",
-        "issue",
-        "date",
-        "readingTime",
-        "tags",
-        "links",
-        "summary",
+        "title", "slug", "type", "format", "noteCode", "stage",
+        "issue", "date", "readingTime", "tags", "links", "summary",
     ]
     lines = ["---"]
     for k in ordered_keys:
@@ -195,11 +367,7 @@ def get_git_status_summary():
     try:
         rem = subprocess.run(
             ["git", "remote", "get-url", "origin"],
-            cwd=str(ROOT_DIR),
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=5,
+            cwd=str(ROOT_DIR), env=env, capture_output=True, text=True, timeout=5,
         )
         if rem.returncode == 0:
             remote_url = rem.stdout.strip()
@@ -209,32 +377,19 @@ def get_git_status_summary():
     try:
         res = subprocess.run(
             ["git", "status", "--short"],
-            cwd=str(ROOT_DIR),
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=5,
+            cwd=str(ROOT_DIR), env=env, capture_output=True, text=True, timeout=5,
         )
         if res.returncode == 0:
             lines = [l for l in res.stdout.splitlines() if l.strip()]
-            return {
-                "initialized": True,
-                "changedCount": len(lines),
-                "files": lines[:20],
-                "remoteUrl": remote_url,
-            }
+            return {"initialized": True, "changedCount": len(lines), "files": lines[:20], "remoteUrl": remote_url}
     except Exception:
         pass
     return {"initialized": False, "changedCount": 0, "files": [], "remoteUrl": remote_url}
 
 
-PROTECTED_CORE_FILES = {"index.html", "styles.css", "theme.custom.css", "app.js"}
-EXCLUDED_STUDIO_FILES = {"studio.html", "studio.css", "studio.js"}
-
-
 def resolve_safe_web_path(rel_path: str) -> Path:
     clean = rel_path.strip().lstrip("/")
-    if not clean or ".." in clean or clean in EXCLUDED_STUDIO_FILES:
+    if not clean or ".." in clean or clean in EXCLUDED_STUDIO_FILES or clean.startswith("."):
         raise ValueError("不允許存取此檔案路徑")
     full = (ROOT_DIR / clean).resolve()
     if ROOT_DIR != full and ROOT_DIR not in full.parents:
@@ -246,7 +401,6 @@ def resolve_safe_web_path(rel_path: str) -> Path:
 
 def list_editable_web_files() -> list:
     items = []
-    # 核心模板與樣式優先排列
     core_order = [
         ("index.html", "網站主骨架 HTML"),
         ("styles.css", "靜謐書齋主樣式 CSS"),
@@ -254,12 +408,10 @@ def list_editable_web_files() -> list:
     ]
     seen = set()
     for fname, label in core_order:
-        fpath = ROOT_DIR / fname
-        if fpath.exists():
+        if (ROOT_DIR / fname).exists():
             items.append({"path": fname, "label": label, "isCore": True})
             seen.add(fname)
 
-    # 掃描根目錄與 pages/ 下的所有自建 .html 檔案
     for p in sorted(ROOT_DIR.glob("*.html")):
         if p.name not in seen and p.name not in EXCLUDED_STUDIO_FILES:
             items.append({"path": p.name, "label": "獨立 HTML 頁面", "isCore": False})
@@ -268,112 +420,528 @@ def list_editable_web_files() -> list:
     pages_dir = ROOT_DIR / "pages"
     if pages_dir.exists():
         for p in sorted(pages_dir.glob("*.html")):
-            rel = f"pages/{p.name}"
-            items.append({"path": rel, "label": "獨立 HTML 子頁", "isCore": False})
+            items.append({"path": f"pages/{p.name}", "label": "獨立 HTML 子頁", "isCore": False})
 
     return items
 
 
+# =========================================================================
+# 嚴謹雙重認證閘門頁面 (未通過認證前絕不載入 studio.html / studio.js)
+# =========================================================================
+def build_auth_gate_html() -> str:
+    configured = AUTH.is_configured()
+    setup_data = None if configured else AUTH.prepare_initial_setup("Deediao")
+
+    if not configured:
+        form_html = f"""
+        <span class="gate-kicker">FIRST-TIME SECURITY VAULT SETUP · 首次啟用雙重驗證</span>
+        <h1 class="gate-title">建立工作台嚴謹認證金鑰</h1>
+        <p class="gate-desc">為保護網站管理權限，首次進入請設定高強度主密碼（PBKDF2-SHA256 六十萬次雜湊），並綁定手機或 Mac 驗證器 App（RFC 6238 TOTP 六位數動態驗證碼，斷網離線亦可驗證）。</p>
+
+        <div class="totp-setup-box">
+          <div class="qr-frame">{setup_data['qrSvg']}</div>
+          <div class="totp-info">
+            <div class="step-tag">步驟 1：掃描 QR Code 或手動輸入密鑰</div>
+            <p>請使用 Google Authenticator、1Password、Authy 或 iPhone／Mac 內建「密碼」App 掃描左側條碼（本條碼於本機離線運算產生，密鑰絕不外傳）。</p>
+            <div class="secret-code-box">手動密鑰：<code>{setup_data['secret']}</code></div>
+            <a href="{setup_data['otpauthUri']}" class="otp-uri-link">在 Mac「密碼」App 直接開啟綁定 →</a>
+          </div>
+        </div>
+
+        <form id="setup-form" class="gate-form" autocomplete="off">
+          <label class="gate-field">
+            <span>步驟 2：設定主管理密碼（至少 10 碼，需含英文與數字/符號）</span>
+            <input type="password" id="setup-pw" required minlength="10" placeholder="輸入高強度主管理密碼⋯" />
+          </label>
+          <label class="gate-field">
+            <span>再次確認主管理密碼</span>
+            <input type="password" id="setup-pw2" required minlength="10" placeholder="再次輸入相同主密碼⋯" />
+          </label>
+          <label class="gate-field">
+            <span>步驟 3：輸入驗證器 App 顯示的 6 位數動態驗證碼</span>
+            <input type="text" id="setup-totp" inputmode="numeric" pattern="[0-9 ]*" maxlength="8" required placeholder="例如 123456" class="code-input" />
+          </label>
+          <div id="gate-error" class="gate-error" role="alert"></div>
+          <button type="submit" id="gate-submit" class="gate-btn">完成安全綁定並產生緊急恢復碼</button>
+        </form>
+
+        <div id="recovery-modal" class="recovery-box" hidden>
+          <h2>✓ 雙重驗證已啟用 — 請立即保存緊急恢復碼</h2>
+          <p>若未來遺失手機驗證器，可使用以下任一組單次恢復碼登入（每組使用一次即自動失效，系統僅存雜湊值，關閉後無法再次查看）：</p>
+          <pre id="recovery-codes-text" class="recovery-pre"></pre>
+          <div style="display:flex; gap:10px; margin-top:14px;">
+            <button type="button" id="copy-recovery-btn" class="gate-btn-outline">複製恢復碼</button>
+            <button type="button" id="enter-studio-btn" class="gate-btn">我已妥善保存，進入工作台 →</button>
+          </div>
+        </div>
+        """
+    else:
+        form_html = """
+        <span class="gate-kicker">AUTHENTICATION REQUIRED · 嚴謹雙重驗證閘門</span>
+        <h1 class="gate-title">書齋離線編輯工作台</h1>
+        <p class="gate-desc">此區域受雙重密碼學驗證保護（PBKDF2-SHA256 ＋ TOTP 動態驗證碼）。連續驗證失敗 5 次將自動鎖定 15 分鐘。</p>
+
+        <form id="login-form" class="gate-form" autocomplete="off">
+          <label class="gate-field">
+            <span>第一因素：主管理密碼 (Master Passphrase)</span>
+            <input type="password" id="login-pw" required autofocus placeholder="輸入主管理密碼⋯" />
+          </label>
+          <label class="gate-field">
+            <span>第二因素：6 位數動態驗證碼（或單次緊急恢復碼）</span>
+            <input type="text" id="login-2fa" required placeholder="6 位數驗證碼 或 XXXX-XXXX-XXXX" class="code-input" />
+          </label>
+          <div id="gate-error" class="gate-error" role="alert"></div>
+          <button type="submit" id="gate-submit" class="gate-btn">驗證身分並解鎖工作台</button>
+        </form>
+        <div style="margin-top:20px; font-size:0.82rem; color:#857f73;">
+          <a href="./" style="color:inherit; border-bottom:1px solid #857f73;">← 返回公開網站首頁</a>
+        </div>
+        """
+
+    return f"""<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>安全驗證 · 書齋編輯工作台</title>
+  <style>
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      padding: 32px 20px; background: #f5f2eb; color: #1d1c19;
+      font-family: "Inter", "Noto Sans TC", "PingFang TC", sans-serif; line-height: 1.7;
+    }}
+    .gate-card {{
+      width: 100%; max-width: 580px; background: #faf8f4; border: 1px solid rgba(29,28,25,0.28); padding: 40px 44px;
+    }}
+    .gate-kicker {{
+      display: block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.73rem; letter-spacing: 0.12em; color: #6e5039; margin-bottom: 10px;
+    }}
+    .gate-title {{
+      font-family: "Newsreader", "Noto Serif TC", "Songti TC", Georgia, serif;
+      font-size: 1.7rem; font-weight: 500; margin: 0 0 10px;
+    }}
+    .gate-desc {{ margin: 0 0 24px; font-size: 0.9rem; color: #534f46; }}
+    .totp-setup-box {{
+      display: grid; grid-template-columns: 188px 1fr; gap: 20px; align-items: center;
+      padding: 18px; background: #ece7dd; border: 1px solid rgba(29,28,25,0.16); margin-bottom: 22px;
+    }}
+    .qr-frame {{ display: flex; align-items: center; justify-content: center; background: #faf8f4; padding: 2px; border: 1px solid rgba(29,28,25,0.15); }}
+    .totp-info p {{ margin: 6px 0 10px; font-size: 0.82rem; color: #534f46; line-height: 1.6; }}
+    .step-tag {{ font-size: 0.8rem; font-weight: 600; }}
+    .secret-code-box {{ font-size: 0.78rem; background: #faf8f4; padding: 6px 8px; border: 1px solid rgba(29,28,25,0.15); word-break: break-all; margin-bottom: 8px; }}
+    .otp-uri-link {{ font-size: 0.8rem; color: #6e5039; text-decoration: none; border-bottom: 1px solid #6e5039; }}
+    .gate-form {{ display: flex; flex-direction: column; gap: 14px; }}
+    .gate-field {{ display: flex; flex-direction: column; gap: 5px; font-size: 0.82rem; color: #534f46; }}
+    .gate-field input {{
+      padding: 10px 12px; font-size: 0.95rem; background: #f5f2eb; border: 1px solid rgba(29,28,25,0.3);
+      border-radius: 2px; color: #1d1c19; outline: none; font-family: inherit;
+    }}
+    .gate-field input:focus {{ border-color: #6e5039; }}
+    .code-input {{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important; letter-spacing: 0.14em; font-size: 1.05rem !important; }}
+    .gate-error {{ color: #9e3f33; font-size: 0.84rem; min-height: 1.2em; }}
+    .gate-btn {{
+      padding: 12px 18px; background: #1d1c19; color: #f5f2eb; border: 1px solid #1d1c19;
+      border-radius: 2px; font-size: 0.92rem; font-weight: 500; cursor: pointer; font-family: inherit;
+    }}
+    .gate-btn:hover {{ opacity: 0.88; }}
+    .gate-btn-outline {{
+      padding: 10px 16px; background: transparent; color: #1d1c19; border: 1px solid rgba(29,28,25,0.35);
+      border-radius: 2px; font-size: 0.88rem; cursor: pointer; font-family: inherit;
+    }}
+    .recovery-box {{ margin-top: 16px; padding: 20px; background: #ece7dd; border: 1px solid #485643; }}
+    .recovery-box h2 {{ font-size: 1.1rem; margin: 0 0 8px; color: #485643; }}
+    .recovery-box p {{ font-size: 0.84rem; margin: 0 0 12px; color: #534f46; }}
+    .recovery-pre {{ background: #faf8f4; padding: 14px; border: 1px solid rgba(29,28,25,0.16); font-size: 0.9rem; letter-spacing: 0.08em; margin: 0; }}
+    @media (max-width: 600px) {{ .totp-setup-box {{ grid-template-columns: 1fr; }} .gate-card {{ padding: 28px 22px; }} }}
+  </style>
+</head>
+<body>
+  <main class="gate-card">
+    {form_html}
+  </main>
+  <script>
+    (function() {{
+      const errEl = document.getElementById("gate-error");
+      const setupForm = document.getElementById("setup-form");
+      if (setupForm) {{
+        setupForm.addEventListener("submit", async (e) => {{
+          e.preventDefault();
+          errEl.textContent = "";
+          const pw = document.getElementById("setup-pw").value;
+          const pw2 = document.getElementById("setup-pw2").value;
+          const totp = document.getElementById("setup-totp").value.trim();
+          if (pw !== pw2) {{
+            errEl.textContent = "兩次輸入的主管理密碼不一致。";
+            return;
+          }}
+          const btn = document.getElementById("gate-submit");
+          btn.disabled = true;
+          try {{
+            const res = await fetch("/api/auth/setup", {{
+              method: "POST",
+              headers: {{ "Content-Type": "application/json" }},
+              body: JSON.stringify({{ password: pw, totpCode: totp }})
+            }});
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.message || "設定失敗");
+            setupForm.hidden = true;
+            document.querySelector(".totp-setup-box").hidden = true;
+            const recModal = document.getElementById("recovery-modal");
+            const codesText = (data.recoveryCodes || []).join("\\n");
+            document.getElementById("recovery-codes-text").textContent = codesText;
+            recModal.hidden = false;
+            document.getElementById("copy-recovery-btn").onclick = () => {{
+              navigator.clipboard.writeText(codesText);
+              document.getElementById("copy-recovery-btn").textContent = "✓ 已複製到剪貼簿";
+            }};
+            document.getElementById("enter-studio-btn").onclick = () => window.location.reload();
+          }} catch (err) {{
+            errEl.textContent = err.message;
+            btn.disabled = false;
+          }}
+        }});
+      }}
+
+      const loginForm = document.getElementById("login-form");
+      if (loginForm) {{
+        loginForm.addEventListener("submit", async (e) => {{
+          e.preventDefault();
+          errEl.textContent = "";
+          const btn = document.getElementById("gate-submit");
+          btn.disabled = true;
+          try {{
+            const res = await fetch("/api/auth/login", {{
+              method: "POST",
+              headers: {{ "Content-Type": "application/json" }},
+              body: JSON.stringify({{
+                password: document.getElementById("login-pw").value,
+                secondFactor: document.getElementById("login-2fa").value
+              }})
+            }});
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.message || "驗證失敗");
+            window.location.reload();
+          }} catch (err) {{
+            errEl.textContent = err.message;
+            btn.disabled = false;
+          }}
+        }});
+      }}
+    }})();
+  </script>
+</body>
+</html>"""
+
+
+# =========================================================================
+# HTTP Handler
+# =========================================================================
 class StudioHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT_DIR), **kwargs)
 
     def end_headers(self):
-        # 確保編輯後預覽不會讀到舊快取
-        if self.path.startswith("/api/") or self.path.endswith((".json", ".js", ".css", ".md")):
+        if (
+            self.path.startswith("/api/")
+            or self.path.startswith("/studio")
+            or self.path.endswith((".json", ".js", ".css", ".md"))
+        ):
             self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("X-Frame-Options", "SAMEORIGIN")
+        self.send_header("X-Content-Type-Options", "nosniff")
         super().end_headers()
 
-    def _send_json(self, payload: dict, status=HTTPStatus.OK):
+    def _client_ip(self) -> str:
+        return self.client_address[0] if self.client_address else "unknown"
+
+    def _check_allowed_host(self) -> bool:
+        host = (self.headers.get("Host") or "").split(":")[0].lower()
+        return host in ("localhost", "127.0.0.1", "::1")
+
+    def _get_session_token(self) -> str:
+        raw_cookie = self.headers.get("Cookie")
+        if not raw_cookie:
+            return ""
+        c = SimpleCookie()
+        c.load(raw_cookie)
+        return c[COOKIE_NAME].value if COOKIE_NAME in c else ""
+
+    def _require_auth(self, require_csrf: bool = False):
+        if not self._check_allowed_host():
+            self._send_json({"ok": False, "message": "拒絕非本機 Host 存取"}, HTTPStatus.FORBIDDEN)
+            return None
+        token = self._get_session_token()
+        csrf_hdr = self.headers.get("X-Studio-CSRF", "")
+        sess = AUTH.validate_session(token, csrf_header=csrf_hdr, require_csrf=require_csrf)
+        if not sess:
+            status = HTTPStatus.FORBIDDEN if (require_csrf and token in AUTH.sessions) else HTTPStatus.UNAUTHORIZED
+            msg = "安全憑證已逾時或未通過雙重驗證，請重新登入。" if status == HTTPStatus.UNAUTHORIZED else "CSRF 安全權杖驗證失敗。"
+            self._send_json({"ok": False, "authRequired": True, "message": msg}, status)
+            return None
+        return sess
+
+    def _send_json(self, payload: dict, status=HTTPStatus.OK, extra_headers: list = None):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        if extra_headers:
+            for k, v in extra_headers:
+                self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_html(self, html_str: str, status=HTTPStatus.OK):
+        body = html_str.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
     def _read_json_body(self) -> dict:
         length = int(self.headers.get("Content-Length", "0"))
+        if length > 60 * 1024 * 1024:
+            raise ValueError("上傳檔案超過 60MB 限制")
         raw = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
         return json.loads(raw)
 
     def do_GET(self):
         parsed = urlparse(self.path)
-        if parsed.path == "/api/studio/bootstrap":
-            manifest_path = CONTENT_DIR / "manifest.json"
-            if not manifest_path.exists():
-                rebuild_manifest()
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        clean_path = parsed.path
+
+        # 1. 阻擋敏感設定與後端原始碼直接靜態下載
+        if any(clean_path == p or clean_path.startswith(p) for p in FORBIDDEN_STATIC_PREFIXES):
+            self._send_html("403 Forbidden", HTTPStatus.FORBIDDEN)
+            return
+
+        # 2. 認證狀態查詢
+        if clean_path == "/api/auth/status":
+            sess = AUTH.validate_session(self._get_session_token())
             self._send_json(
                 {
                     "ok": True,
-                    "config": read_site_config(),
-                    "theme": read_theme_config(),
-                    "manifest": manifest,
-                    "webFiles": list_editable_web_files(),
-                    "git": get_git_status_summary(),
+                    "configured": AUTH.is_configured(),
+                    "authenticated": bool(sess),
+                    "csrfToken": sess["csrf"] if sess else "",
                 }
             )
             return
 
-        if parsed.path == "/api/studio/web-files":
-            self._send_json({"ok": True, "webFiles": list_editable_web_files()})
+        # 3. 保護工作台靜態資源 (/studio.html, /studio.js, /studio.css)
+        if clean_path in ("/studio.html", "/studio"):
+            if not self._check_allowed_host():
+                self._send_html("403 Forbidden", HTTPStatus.FORBIDDEN)
+                return
+            sess = AUTH.validate_session(self._get_session_token())
+            if not sess:
+                self._send_html(build_auth_gate_html(), HTTPStatus.OK)
+                return
+            if clean_path == "/studio":
+                self.path = "/studio.html"
+            super().do_GET()
             return
 
-        if parsed.path == "/api/studio/web-file":
-            qs = parse_qs(parsed.query)
-            rel_path = (qs.get("path") or [""])[0]
-            try:
-                target = resolve_safe_web_path(rel_path)
-                if not target.exists():
-                    self._send_json({"ok": False, "message": "找不到指定網頁檔"}, HTTPStatus.NOT_FOUND)
-                    return
+        if clean_path in ("/studio.js", "/studio.css", "/studio-media.js"):
+            sess = AUTH.validate_session(self._get_session_token())
+            if not sess:
+                self._send_html("401 Unauthorized", HTTPStatus.UNAUTHORIZED)
+                return
+            super().do_GET()
+            return
+
+        # 4. 保護所有 /api/studio/* 讀取端點
+        if clean_path.startswith("/api/studio/"):
+            sess = self._require_auth(require_csrf=False)
+            if not sess:
+                return
+
+            if clean_path == "/api/studio/bootstrap":
+                manifest_path = CONTENT_DIR / "manifest.json"
+                if not manifest_path.exists():
+                    rebuild_manifest()
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
                 self._send_json(
                     {
                         "ok": True,
-                        "path": rel_path,
-                        "content": target.read_text(encoding="utf-8"),
-                        "isCore": rel_path in PROTECTED_CORE_FILES,
+                        "csrfToken": sess["csrf"],
+                        "config": read_site_config(),
+                        "theme": read_theme_config(),
+                        "manifest": manifest,
+                        "webFiles": list_editable_web_files(),
+                        "media": list_uploaded_media(),
+                        "git": get_git_status_summary(),
                     }
                 )
-            except ValueError as exc:
-                self._send_json({"ok": False, "message": str(exc)}, HTTPStatus.BAD_REQUEST)
-            return
+                return
 
-        if parsed.path == "/api/studio/item":
-            qs = parse_qs(parsed.query)
-            doc_type = (qs.get("type") or ["essay"])[0]
-            slug = (qs.get("slug") or [""])[0]
-            folder = TYPE_TO_FOLDER.get(doc_type)
-            if not folder or not slug:
-                self._send_json({"ok": False, "message": "缺少 type 或 slug 參數"}, HTTPStatus.BAD_REQUEST)
+            if clean_path == "/api/studio/media":
+                self._send_json({"ok": True, "media": list_uploaded_media()})
                 return
-            md_path = folder / f"{slug}.md"
-            if not md_path.exists():
-                self._send_json({"ok": False, "message": "找不到該篇檔案"}, HTTPStatus.NOT_FOUND)
+
+            if clean_path == "/api/studio/gdrive/list":
+                qs = parse_qs(parsed.query)
+                folder_id = (qs.get("folderId") or ["root"])[0]
+                query = (qs.get("query") or [""])[0].strip()
+                mode = (qs.get("mode") or ["folder"])[0]
+                res = list_gdrive_items(folder_id, query, mode)
+                self._send_json(res, HTTPStatus.OK if res.get("ok") else HTTPStatus.BAD_REQUEST)
                 return
-            meta, body = parse_markdown_file(md_path)
-            self._send_json({"ok": True, "meta": meta, "body": body})
+
+            if clean_path == "/api/studio/web-files":
+                self._send_json({"ok": True, "webFiles": list_editable_web_files()})
+                return
+
+            if clean_path == "/api/studio/web-file":
+                qs = parse_qs(parsed.query)
+                rel_path = (qs.get("path") or [""])[0]
+                try:
+                    target = resolve_safe_web_path(rel_path)
+                    if not target.exists():
+                        self._send_json({"ok": False, "message": "找不到指定網頁檔"}, HTTPStatus.NOT_FOUND)
+                        return
+                    self._send_json(
+                        {
+                            "ok": True,
+                            "path": rel_path,
+                            "content": target.read_text(encoding="utf-8"),
+                            "isCore": rel_path in PROTECTED_CORE_FILES,
+                        }
+                    )
+                except ValueError as exc:
+                    self._send_json({"ok": False, "message": str(exc)}, HTTPStatus.BAD_REQUEST)
+                return
+
+            if clean_path == "/api/studio/item":
+                qs = parse_qs(parsed.query)
+                doc_type = (qs.get("type") or ["essay"])[0]
+                slug = (qs.get("slug") or [""])[0]
+                folder = TYPE_TO_FOLDER.get(doc_type)
+                if not folder or not slug:
+                    self._send_json({"ok": False, "message": "缺少 type 或 slug 參數"}, HTTPStatus.BAD_REQUEST)
+                    return
+                md_path = folder / f"{slug}.md"
+                if not md_path.exists():
+                    self._send_json({"ok": False, "message": "找不到該篇檔案"}, HTTPStatus.NOT_FOUND)
+                    return
+                meta, body = parse_markdown_file(md_path)
+                self._send_json({"ok": True, "meta": meta, "body": body})
+                return
+
+            self._send_json({"ok": False, "message": "未知的 API 路徑"}, HTTPStatus.NOT_FOUND)
             return
 
         super().do_GET()
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        clean_path = parsed.path
+
+        if not self._check_allowed_host():
+            self._send_json({"ok": False, "message": "拒絕非本機 Host 存取"}, HTTPStatus.FORBIDDEN)
+            return
+
         try:
             data = self._read_json_body()
 
-            if parsed.path == "/api/studio/config":
+            # ── 認證相關端點 ─────────────────────────────────────────────
+            if clean_path == "/api/auth/setup":
+                result = AUTH.complete_initial_setup(
+                    data.get("password", ""),
+                    data.get("totpCode", ""),
+                    self._client_ip(),
+                )
+                sess = result["session"]
+                cookie_val = f"{COOKIE_NAME}={sess['token']}; Path=/; HttpOnly; SameSite=Strict; Max-Age=43200"
+                self._send_json(
+                    {"ok": True, "recoveryCodes": result["recoveryCodes"], "csrfToken": sess["csrf"]},
+                    HTTPStatus.OK,
+                    extra_headers=[("Set-Cookie", cookie_val)],
+                )
+                return
+
+            if clean_path == "/api/auth/login":
+                sess = AUTH.verify_login(
+                    data.get("password", ""),
+                    data.get("secondFactor", ""),
+                    self._client_ip(),
+                )
+                cookie_val = f"{COOKIE_NAME}={sess['token']}; Path=/; HttpOnly; SameSite=Strict; Max-Age=43200"
+                self._send_json(
+                    {"ok": True, "csrfToken": sess["csrf"]},
+                    HTTPStatus.OK,
+                    extra_headers=[("Set-Cookie", cookie_val)],
+                )
+                return
+
+            if clean_path == "/api/auth/logout":
+                AUTH.logout(self._get_session_token(), self._client_ip())
+                clear_cookie = f"{COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
+                self._send_json({"ok": True}, HTTPStatus.OK, extra_headers=[("Set-Cookie", clear_cookie)])
+                return
+
+            # ── 以下所有 /api/studio/* 寫入端點皆強制要求 Session + CSRF ──
+            sess = self._require_auth(require_csrf=True)
+            if not sess:
+                return
+
+            if clean_path == "/api/studio/upload":
+                raw_name = data.get("filename", "upload.bin")
+                ext = Path(raw_name).suffix.lower()
+                if ext not in ALLOWED_UPLOAD_EXTS:
+                    self._send_json(
+                        {"ok": False, "message": f"基於安全限制，不支援上傳 {ext or '無副檔名'} 類型檔案。"},
+                        HTTPStatus.BAD_REQUEST,
+                    )
+                    return
+                b64_str = data.get("dataBase64", "")
+                if "," in b64_str and b64_str.startswith("data:"):
+                    b64_str = b64_str.split(",", 1)[1]
+                raw_bytes = base64.b64decode(b64_str)
+                dest = unique_upload_path(raw_name)
+                dest.write_bytes(raw_bytes)
+                st = dest.stat()
+                self._send_json(
+                    {
+                        "ok": True,
+                        "filename": dest.name,
+                        "url": f"./assets/uploads/{dest.name}",
+                        "size": st.st_size,
+                        "sizeLabel": format_size(st.st_size),
+                        "ext": dest.suffix.lstrip(".").upper() or "FILE",
+                        "kind": classify_ext(dest.suffix),
+                        "media": list_uploaded_media(),
+                        "git": get_git_status_summary(),
+                    }
+                )
+                return
+
+            if clean_path == "/api/studio/gdrive/import":
+                file_id = data.get("fileId", "").strip()
+                name = data.get("name", "drive-file").strip()
+                mime_type = data.get("mimeType", "").strip()
+                if not file_id:
+                    self._send_json({"ok": False, "message": "缺少 Google Drive 檔案 ID"}, HTTPStatus.BAD_REQUEST)
+                    return
+                imported = import_gdrive_file(file_id, name, mime_type)
+                imported["media"] = list_uploaded_media()
+                imported["git"] = get_git_status_summary()
+                self._send_json(imported)
+                return
+
+            if clean_path == "/api/studio/config":
                 write_site_config(data.get("config", {}))
                 self._send_json({"ok": True, "git": get_git_status_summary()})
                 return
 
-            if parsed.path == "/api/studio/theme":
+            if clean_path == "/api/studio/theme":
                 write_theme_config(data.get("theme", {}))
                 self._send_json({"ok": True, "theme": read_theme_config(), "git": get_git_status_summary()})
                 return
 
-            if parsed.path == "/api/studio/item":
+            if clean_path == "/api/studio/item":
                 meta = data.get("meta", {})
                 body = data.get("body", "")
                 old_slug = data.get("originalSlug", "").strip()
@@ -383,7 +951,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 raw_slug = meta.get("slug", "").strip()
                 slug = re.sub(r"[^a-zA-Z0-9_-]", "-", raw_slug).strip("-")
                 if not slug:
-                    self._send_json({"ok": False, "message": "請填寫英文網址代稱 (Slug)，例如 my-first-note"}, HTTPStatus.BAD_REQUEST)
+                    self._send_json({"ok": False, "message": "請填寫英文網址代稱 (Slug)"}, HTTPStatus.BAD_REQUEST)
                     return
 
                 meta["slug"] = slug
@@ -396,7 +964,6 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 folder.mkdir(parents=True, exist_ok=True)
                 target_path = folder / f"{slug}.md"
 
-                # 若修改了 slug 或變更了分類，移除舊檔
                 if old_slug and (old_slug != slug or (old_type and old_type != doc_type)):
                     prev_folder = TYPE_TO_FOLDER.get(old_type or doc_type)
                     if prev_folder:
@@ -408,33 +975,22 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 rebuild_manifest()
                 manifest = json.loads((CONTENT_DIR / "manifest.json").read_text(encoding="utf-8"))
                 self._send_json(
-                    {
-                        "ok": True,
-                        "slug": slug,
-                        "type": doc_type,
-                        "manifest": manifest,
-                        "git": get_git_status_summary(),
-                    }
+                    {"ok": True, "slug": slug, "type": doc_type, "manifest": manifest, "git": get_git_status_summary()}
                 )
                 return
 
-            if parsed.path == "/api/studio/web-file":
+            if clean_path == "/api/studio/web-file":
                 rel_path = data.get("path", "").strip()
                 content = data.get("content", "")
                 target = resolve_safe_web_path(rel_path)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(content, encoding="utf-8")
                 self._send_json(
-                    {
-                        "ok": True,
-                        "path": rel_path,
-                        "webFiles": list_editable_web_files(),
-                        "git": get_git_status_summary(),
-                    }
+                    {"ok": True, "path": rel_path, "webFiles": list_editable_web_files(), "git": get_git_status_summary()}
                 )
                 return
 
-            if parsed.path == "/api/studio/git-remote":
+            if clean_path == "/api/studio/git-remote":
                 remote_url = data.get("remoteUrl", "").strip()
                 if not remote_url:
                     self._send_json({"ok": False, "message": "請輸入有效的 GitHub 倉庫網址"}, HTTPStatus.BAD_REQUEST)
@@ -447,14 +1003,14 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 self._send_json({"ok": True, "git": get_git_status_summary()})
                 return
 
-            if parsed.path == "/api/studio/sync":
+            if clean_path == "/api/studio/sync":
                 sync_script = ROOT_DIR / "scripts" / "sync_cloud.py"
                 res = subprocess.run(
                     [sys.executable, str(sync_script)],
                     cwd=str(ROOT_DIR),
                     capture_output=True,
                     text=True,
-                    timeout=120,
+                    timeout=150,
                 )
                 self._send_json(
                     {
@@ -466,11 +1022,19 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 return
 
             self._send_json({"ok": False, "message": "未知的 API 路徑"}, HTTPStatus.NOT_FOUND)
+        except PermissionError as exc:
+            self._send_json({"ok": False, "message": str(exc)}, HTTPStatus.UNAUTHORIZED)
+        except ValueError as exc:
+            self._send_json({"ok": False, "message": str(exc)}, HTTPStatus.BAD_REQUEST)
         except Exception as exc:
             self._send_json({"ok": False, "message": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def do_DELETE(self):
         parsed = urlparse(self.path)
+        sess = self._require_auth(require_csrf=True)
+        if not sess:
+            return
+
         if parsed.path == "/api/studio/item":
             qs = parse_qs(parsed.query)
             doc_type = (qs.get("type") or [""])[0]
@@ -496,29 +1060,30 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 if target.exists():
                     target.unlink()
                 self._send_json(
-                    {
-                        "ok": True,
-                        "webFiles": list_editable_web_files(),
-                        "git": get_git_status_summary(),
-                    }
+                    {"ok": True, "webFiles": list_editable_web_files(), "git": get_git_status_summary()}
                 )
             except ValueError as exc:
                 self._send_json({"ok": False, "message": str(exc)}, HTTPStatus.BAD_REQUEST)
             return
+
         self._send_json({"ok": False, "message": "未知的 API 路徑"}, HTTPStatus.NOT_FOUND)
 
 
 def main():
     port = int(os.environ.get("PORT", "8788"))
-    # 確保首次啟動時已有 theme.config.json 與最新 manifest
+    UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    gitkeep = UPLOADS_DIR / ".gitkeep"
+    if not gitkeep.exists():
+        gitkeep.write_text("", encoding="utf-8")
+
     if not THEME_JSON_PATH.exists():
         write_theme_config(DEFAULT_THEME)
     rebuild_manifest()
 
     server = ThreadingHTTPServer(("127.0.0.1", port), StudioHandler)
-    print(f"澄觀書齋本機服務已啟動：")
+    print(f"書齋本機服務已啟動（僅綁定本機 127.0.0.1）：")
     print(f"  • 前台網站預覽：http://localhost:{port}/")
-    print(f"  • 離線編輯工作台：http://localhost:{port}/studio.html")
+    print(f"  • 受雙重驗證保護之編輯工作台：http://localhost:{port}/studio.html")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

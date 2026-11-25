@@ -111,6 +111,15 @@
 8. **消除雙站 CDN 快取延遲並綁定 GitHub ↔ Netlify 全自動持續部署（2026-11-25 09:05–09:21）**：
    - 於 `app.js` 實作 `refreshLatestSiteConfig()` 無快取動態載入（`cache: "no-store"`），徹底消除 GitHub Pages 10 分鐘快取延遲；升級 `studio.js` 跨分頁全量儲存（`dirtyScopes`），修改任何分頁按一次 `⌘S` 即全數存檔。
    - 透過 `netlify-cli` 與 `gh` 自動完成 `deediao-studio` 綁定 `deediaoyeh/personal-site`（Deploy Key + GitHub Push Webhook + `NETLIFY_BUILD_HOOK_URL` 寫入 GitHub Secrets 與 `.sync.env`），實現主站一更新、Netlify 備份站全自動跟隨部署。
+9. **導入工作台嚴謹雙重認證（PBKDF2 + TOTP 2FA）與 HTML 編輯器照片／拖曳檔案／Google Drive 選檔器（2026-11-25 09:46–10:00）**：
+   - **企業級雙重認證與實體隔離（`scripts/security.py`、`server.py`、`scripts/build_content.py`）**：
+     - 實作 `PBKDF2-HMAC-SHA256`（600,000 次迭代＋32-byte 隨機鹽值）主密碼 ＋ 標準 `RFC 6238 TOTP` 動態六位數驗證碼（純本機離線生成 SVG QR Code，密鑰零外傳，並附 6 組單次緊急恢復碼）。
+     - 強制保護 `/studio*` 與 `/api/studio/*`：未驗證前不發送任何編輯器 JS/CSS 與資料；全寫入端點強制驗證 `X-Studio-CSRF` 權杖、HttpOnly `SameSite=Strict` 憑證、閒置 2 小時自動登出、連續 5 次失敗鎖定 15 分鐘與 `.studio-audit.log` 稽核紀錄。
+     - 公開發佈隔離：`build_content.py --bundle-public dist_public` 在部署 GitHub Pages 主站與 Netlify 備份站時徹底排除 `studio.*` 與後端程式，外網完全無法存取編輯器。
+   - **媒體與 Google Drive 匯入功能（`studio-media.js`、`studio.html`、`styles.css`）**：
+     - 支援於所有編輯器（Markdown、視覺化 HTML、HTML 原始碼、全站 HTML 網頁編輯器）一鍵「＋插入照片」、「＋加入檔案」、直接從電腦**拖曳照片／檔案進入編輯區**，以及 `⌘V` 直接貼上螢幕截圖。
+     - 內建「Google 雲端硬碟選檔視窗」：可直接瀏覽與搜尋 `deediao@gmail.com` 雲端硬碟資料夾，點選即下載／匯出至 `assets/uploads/` 並自動插入響應式 `<figure>` 圖說框、影音播放器或書齋附件下載卡。
+
 
 
 
