@@ -1,6 +1,6 @@
 {
-  "updatedAt": "2026-11-25T12:57:54Z",
-  "count": 5,
+  "updatedAt": "2026-11-25T23:34:34Z",
+  "count": 6,
   "items": [
     {
       "title": "持續不斷引導與思考",
@@ -16,6 +16,20 @@
       ],
       "links": [],
       "path": "./content/essays/essay-20261125-1.md"
+    },
+    {
+      "title": "自主學習工作坊第二次開場說明",
+      "slug": "essay-20261125-2",
+      "type": "essay",
+      "format": "markdown",
+      "date": "2026-11-25",
+      "readingTime": "5 min",
+      "summary": "每次上完課都整理一下，作為銜接上次和思考下次的參考",
+      "tags": [
+        "自主學習"
+      ],
+      "links": [],
+      "path": "./content/essays/essay-20261125-2.md"
     },
     {
       "title": "這次我把AI當作SA來協作",
