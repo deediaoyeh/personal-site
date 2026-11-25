@@ -4,12 +4,12 @@
  */
 window.SITE_CONFIG = {
   "brand": {
-    "name": "林澄觀",
-    "latinName": "Cheng-Kuan Lin",
+    "name": "低調走過",
+    "latinName": "Deediao",
     "studioTitle": "澄觀書齋 · Field Notes & Essays",
-    "tagline": "在資訊過載的時代，慢下來拆解複雜問題、累積可複用的思維模型。",
-    "role": "獨立研究者・策略顧問・寫作者",
-    "location": "Taipei, Taiwan",
+    "tagline": "這裡是一座持續生長的個人知識庫。",
+    "role": "獨立研究者・數位應用思考者",
+    "location": "Kaohsiung , Taiwan",
     "since": "2024",
     "email": "deediao@gmail.com"
   },
