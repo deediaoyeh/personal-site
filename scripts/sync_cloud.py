@@ -119,7 +119,7 @@ def sync_git_and_netlify(logs: list):
         )
         if remote.returncode == 0 and remote.stdout.strip():
             subprocess.run(
-                ["git", "pull", "--rebase", "-X", "ours", "origin", "main"],
+                ["git", "pull", "--no-rebase", "-X", "ours", "--no-edit", "origin", "main"],
                 cwd=str(ROOT_DIR),
                 env=env,
                 capture_output=True,
