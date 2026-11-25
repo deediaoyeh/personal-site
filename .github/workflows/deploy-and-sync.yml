@@ -38,7 +38,7 @@ jobs:
         env:
           GOOGLE_WORKSPACE_FEED_URL: ${{ secrets.GOOGLE_WORKSPACE_FEED_URL }}
           GOOGLE_WORKSPACE_SYNC_TOKEN: ${{ secrets.GOOGLE_WORKSPACE_SYNC_TOKEN }}
-          SITE_BASE_URL: ${{ vars.SITE_BASE_URL || 'https://example.github.io' }}
+          SITE_BASE_URL: ${{ vars.SITE_BASE_URL || 'https://deediaoyeh.github.io/personal-site' }}
         run: python3 scripts/build_content.py
 
       - name: Commit synced content back to GitHub (auto-triggers Netlify mirror if connected)

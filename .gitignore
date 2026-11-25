@@ -2,4 +2,5 @@
 *.log
 .sync.env
 .netlify
+.local-bin/
 __pycache__/
