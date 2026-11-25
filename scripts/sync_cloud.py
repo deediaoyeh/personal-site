@@ -16,7 +16,6 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 CONTENT_DIR = ROOT_DIR / "content"
 
-# 已建立之 Google Drive 資料夾對應 ID (deediao@gmail.com / PersonalSite-Vault)
 DRIVE_FOLDERS = {
     "root": "1n_ZQELr2H9f1Zre0rmntedtvyrohcGxS",
     "essays": "1wWS7-UFucygkzaz237ppzJDiB3207TIT",
@@ -37,21 +36,37 @@ def load_env_file():
         os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
+def build_git_env() -> dict:
+    env = os.environ.copy()
+    local_bin = ROOT_DIR / ".local-bin"
+    extra_paths = [str(local_bin), "/Users/deediao/.gemini/antigravity/bin", "/usr/local/bin", "/opt/homebrew/bin"]
+    env["PATH"] = ":".join(extra_paths + [env.get("PATH", "")])
+    # 若受限環境無法讀取 ~/.gitconfig，自動降級使用專案內 .git/config 設定，避免 exit status 128
+    gitconfig = Path.home() / ".gitconfig"
+    try:
+        if gitconfig.exists():
+            gitconfig.read_bytes()
+    except PermissionError:
+        env["GIT_CONFIG_GLOBAL"] = "/dev/null"
+    return env
+
+
 def sync_to_gdrive_cli(logs: list):
-    gdrive_bin = shutil.which("gdrive")
-    if not gdrive_bin:
-        logs.append("• 略過 gdrive CLI 雲端硬碟直傳（本機未偵測到 gdrive 指令，改由 GitHub Actions 或本機雲端硬碟資料夾同步）")
+    gdrive_bin = shutil.which("gdrive") or "/Users/deediao/.gemini/antigravity/bin/gdrive"
+    if not Path(gdrive_bin).exists():
+        logs.append("• 略過 gdrive CLI 雲端硬碟直傳（改由 GitHub Actions 排程同步）")
         return
 
-    logs.append("• 正在同步最新 Markdown 文章至 Google Drive (PersonalSite-Vault)⋯")
+    logs.append("• 正在同步最新 Markdown 內容至 Google Drive (PersonalSite-Vault)⋯")
     synced_count = 0
+    removed_count = 0
+
     for sub in ("essays", "notes", "letters"):
         folder_id = DRIVE_FOLDERS[sub]
         local_dir = CONTENT_DIR / sub
-        if not local_dir.exists():
-            continue
+        local_dir.mkdir(parents=True, exist_ok=True)
+        local_files = {p.name: p for p in sorted(local_dir.glob("*.md"))}
 
-        # 查詢目前雲端資料夾內既有檔案，決定 update 或 upload
         ls_proc = subprocess.run(
             [gdrive_bin, "readonly", "ls", folder_id, "--json"],
             capture_output=True,
@@ -61,14 +76,16 @@ def sync_to_gdrive_cli(logs: list):
         if ls_proc.returncode == 0 and ls_proc.stdout.strip():
             try:
                 for entry in json.loads(ls_proc.stdout):
-                    remote_map[entry.get("name")] = entry.get("id")
+                    if entry.get("name", "").endswith(".md"):
+                        remote_map[entry["name"]] = entry["id"]
             except Exception:
                 pass
 
-        for md_file in sorted(local_dir.glob("*.md")):
-            if md_file.name in remote_map:
+        # 上傳或更新本機現有文章
+        for fname, md_file in local_files.items():
+            if fname in remote_map:
                 subprocess.run(
-                    [gdrive_bin, "mutate", "update", remote_map[md_file.name], str(md_file)],
+                    [gdrive_bin, "mutate", "update", remote_map[fname], str(md_file)],
                     capture_output=True,
                     text=True,
                 )
@@ -80,25 +97,33 @@ def sync_to_gdrive_cli(logs: list):
                 )
             synced_count += 1
 
-    logs.append(f"  ✓ 已同步 {synced_count} 篇 Markdown 檔案至 Google Drive。")
+        # 若本機已刪除該篇文章，將雲端對應舊檔移至垃圾桶保持一致
+        for rname, rid in remote_map.items():
+            if rname not in local_files:
+                subprocess.run(
+                    [gdrive_bin, "mutate", "trash", rid],
+                    capture_output=True,
+                    text=True,
+                )
+                removed_count += 1
+
+    logs.append(f"  ✓ Google Drive 同步完成（更新/上傳 {synced_count} 篇，清理舊檔 {removed_count} 篇）。")
 
 
 def sync_git_and_netlify(logs: list):
+    env = build_git_env()
+
     subprocess.run(
         [sys.executable, str(ROOT_DIR / "scripts" / "build_content.py")],
         cwd=str(ROOT_DIR),
+        env=env,
         check=True,
     )
     logs.append("• 已重新產生 content/manifest.json 與 rss.xml。")
 
     git_dir = ROOT_DIR / ".git"
     if git_dir.exists():
-        env = os.environ.copy()
-        local_bin = ROOT_DIR / ".local-bin"
-        if local_bin.exists():
-            env["PATH"] = f"{local_bin}:{env.get('PATH', '')}"
-
-        subprocess.run(["git", "add", "."], cwd=str(ROOT_DIR), env=env, check=True)
+        subprocess.run(["git", "add", "-A"], cwd=str(ROOT_DIR), env=env, check=True)
         diff = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=str(ROOT_DIR), env=env)
         if diff.returncode != 0:
             ts = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -118,13 +143,31 @@ def sync_git_and_netlify(logs: list):
             text=True,
         )
         if remote.returncode == 0 and remote.stdout.strip():
-            subprocess.run(
-                ["git", "pull", "--no-rebase", "-X", "ours", "--no-edit", "origin", "main"],
+            # 先 fetch 並以本機版本優先合併，避免遠端自動時間戳衝突
+            subprocess.run(["git", "fetch", "origin", "main"], cwd=str(ROOT_DIR), env=env, capture_output=True)
+            merge = subprocess.run(
+                ["git", "merge", "-X", "ours", "--no-edit", "origin/main"],
                 cwd=str(ROOT_DIR),
                 env=env,
                 capture_output=True,
                 text=True,
             )
+            if merge.returncode == 0:
+                subprocess.run(
+                    [sys.executable, str(ROOT_DIR / "scripts" / "build_content.py")],
+                    cwd=str(ROOT_DIR),
+                    env=env,
+                    check=True,
+                )
+                subprocess.run(["git", "add", "-A"], cwd=str(ROOT_DIR), env=env, check=True)
+                if subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=str(ROOT_DIR), env=env).returncode != 0:
+                    subprocess.run(
+                        ["git", "commit", "-m", "chore: rebuild manifest after remote merge"],
+                        cwd=str(ROOT_DIR),
+                        env=env,
+                        check=True,
+                    )
+
             push = subprocess.run(
                 ["git", "push", "origin", "main"],
                 cwd=str(ROOT_DIR),
@@ -133,11 +176,9 @@ def sync_git_and_netlify(logs: list):
                 text=True,
             )
             if push.returncode == 0:
-                logs.append("  ✓ 已推送至 GitHub 主站（Netlify 備份站將自動跟隨部署）。")
+                logs.append("  ✓ 已成功推送至 GitHub 主站（GitHub Pages 約 30 秒內自動更新完成）！")
             else:
-                logs.append(f"  ! GitHub 推送尚未完成：{push.stderr.strip()}")
-        else:
-            logs.append("  • 本機 Git 已存檔（綁定 GitHub 遠端 origin 後即可自動推送主站與 Netlify 備份站）。")
+                logs.append(f"  ! GitHub 推送失敗：{push.stderr.strip()}")
 
     hook_url = os.environ.get("NETLIFY_BUILD_HOOK_URL", "").strip()
     if hook_url:

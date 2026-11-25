@@ -1235,7 +1235,7 @@
 
     const flushPara = () => {
       if (paraBuf.length) {
-        out.push(`<p>${inlineFmt(paraBuf.join(" "))}</p>`);
+        out.push(`<p>${paraBuf.map(inlineFmt).join("<br />")}</p>`);
         paraBuf = [];
       }
     };

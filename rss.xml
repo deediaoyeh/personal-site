@@ -5,6 +5,12 @@
     <link>https://example.github.io</link>
     <description>在資訊過載的時代，慢下來拆解複雜問題、累積可複用的思維模型。</description>
     <language>zh-TW</language>
-
+    <item>
+      <title>這次我把AI當作SA來協作</title>
+      <link>https://example.github.io/#/notes/note-20261125-1</link>
+      <guid>https://example.github.io/#/notes/note-20261125-1</guid>
+      <pubDate>2026-11-25</pubDate>
+      <description>開始動手思考跟AI協作各種可能</description>
+    </item>
   </channel>
 </rss>

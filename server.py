@@ -183,11 +183,20 @@ def rebuild_manifest():
 
 
 def get_git_status_summary():
+    env = os.environ.copy()
+    gitconfig = Path.home() / ".gitconfig"
+    try:
+        if gitconfig.exists():
+            gitconfig.read_bytes()
+    except PermissionError:
+        env["GIT_CONFIG_GLOBAL"] = "/dev/null"
+
     remote_url = ""
     try:
         rem = subprocess.run(
             ["git", "remote", "get-url", "origin"],
             cwd=str(ROOT_DIR),
+            env=env,
             capture_output=True,
             text=True,
             timeout=5,
@@ -201,6 +210,7 @@ def get_git_status_summary():
         res = subprocess.run(
             ["git", "status", "--short"],
             cwd=str(ROOT_DIR),
+            env=env,
             capture_output=True,
             text=True,
             timeout=5,

@@ -6,7 +6,7 @@ window.SITE_CONFIG = {
   "brand": {
     "name": "低調走過",
     "latinName": "Deediao",
-    "studioTitle": "澄觀書齋 · Field Notes & Essays",
+    "studioTitle": "低調走過 · Field Notes & Essays",
     "tagline": "這裡是一座持續生長的個人知識庫。",
     "role": "獨立研究者・數位應用思考者",
     "location": "Kaohsiung , Taiwan",
@@ -23,7 +23,7 @@ window.SITE_CONFIG = {
     ]
   },
   "newsletter": {
-    "title": "《靜水深流》雙週電子報",
+    "title": "《低調走過》雙週電子報",
     "frequency": "隔週週日早晨寄出",
     "promise": "每次一封，包含一篇核心長文導讀、三則近期讀書卡片與一個值得反覆推敲的問題。不發廣告，隨時可一鍵退訂。",
     "inputPlaceholder": "輸入你的常用 Email 信箱",

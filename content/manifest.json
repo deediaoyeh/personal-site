@@ -1,5 +1,23 @@
 {
-  "updatedAt": "2026-11-25T00:41:31Z",
-  "count": 0,
-  "items": []
+  "updatedAt": "2026-11-25T00:48:38Z",
+  "count": 1,
+  "items": [
+    {
+      "title": "這次我把AI當作SA來協作",
+      "slug": "note-20261125-1",
+      "type": "note",
+      "format": "markdown",
+      "date": "2026-11-25",
+      "readingTime": "1 min",
+      "summary": "開始動手思考跟AI協作各種可能",
+      "tags": [
+        "AI",
+        "想法"
+      ],
+      "links": [],
+      "path": "./content/notes/note-20261125-1.md",
+      "stage": "seedling",
+      "noteCode": "NOTE · 001"
+    }
+  ]
 }

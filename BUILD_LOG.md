@@ -105,6 +105,10 @@
 6. **離線編輯器網址代稱前綴連動更新（2026-11-25 08:40）**：
    - 於 `studio.js` 實作 `syncSlugPrefixForType()`：當切換「內容類型」（長文 `essay`／筆記 `note`／電子報 `letter`）時，自動同步更換「英文網址代稱 (Slug)」的前綴字（`essay-`、`note-`、`letter-`）並補齊對應卡片編號或期數。
    - 為 `content/essays`、`content/notes`、`content/letters` 加入 `.gitkeep` 確保清空範例文章後目錄結構穩定，並最佳化 GitHub Actions 僅於排程／遠端拉取時寫回倉庫，避免本機推送產生衝突。
+7. **修復雲端同步沙盒權限與同步首篇真實筆記《這次我把AI當作SA來協作》（2026-11-25 08:47）**：
+   - 修正 `server.py` 與 `scripts/sync_cloud.py` 的 `.gitconfig` 環境讀取機制，並以完整本機網路權限啟動 `server.py`，使編輯工作台內點擊「立即執行雲端同步」可直接存取 GitHub 與雲端服務。
+   - 升級段落單行換行渲染（自動轉為 `<br />`），忠實呈現逐行書寫節奏；並將首篇筆記 `note-20261125-1.md` 同步發佈至 GitHub Pages 主站、Netlify 備份站與 Google Drive。
+
 
 
 

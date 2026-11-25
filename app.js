@@ -789,7 +789,7 @@
 
     const flushParagraph = () => {
       if (paragraphBuffer.length > 0) {
-        out.push(`<p>${ renderInline(paragraphBuffer.join(" ")) }</p>`);
+        out.push(`<p>${paragraphBuffer.map(renderInline).join("<br />")}</p>`);
         paragraphBuffer = [];
       }
     };
