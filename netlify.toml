@@ -1,5 +1,5 @@
 # Netlify 備份站設定檔 (Mirror Site Configuration)
-# 當 GitHub 主站有任何 commit 或收到 Build Hook 通知時，Netlify 會自動執行以下建置並同步發佈。
+# 當 GitHub 主站有任何 commit 時，Netlify 會自動執行以下建置並同步發佈。
 
 [build]
   publish = "."
@@ -16,6 +16,21 @@
     Referrer-Policy = "strict-origin-when-cross-origin"
 
 [[headers]]
+  for = "/site.config.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/theme.custom.css"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
   for = "/content/*"
   [headers.values]
-    Cache-Control = "public, max-age=60, stale-while-revalidate=300"
+    Cache-Control = "public, max-age=0, must-revalidate"

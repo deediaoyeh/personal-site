@@ -76,7 +76,13 @@
       originalType: "",
       isNew: false
     },
-    dirty: false
+    dirty: false,
+    dirtyScopes: {
+      content: false,
+      html: false,
+      config: false,
+      theme: false
+    }
   };
 
   // =========================================================================
@@ -127,9 +133,19 @@
     el.className = `studio-status ${cls}`;
   }
 
-  function markDirty() {
+  function markDirty(explicitScope) {
     state.dirty = true;
-    setStatus("尚有未儲存的修改（按 ⌘S 儲存）", "is-dirty");
+    const scope =
+      explicitScope ||
+      (state.activeTab === "content"
+        ? "content"
+        : state.activeTab === "html"
+        ? "html"
+        : state.activeTab === "theme"
+        ? "theme"
+        : "config");
+    state.dirtyScopes[scope] = true;
+    setStatus("尚有未儲存的修改（按 ⌘S 儲存全部分頁變更）", "is-dirty");
   }
 
   function updateGitBadge(gitInfo) {
@@ -1034,7 +1050,59 @@
     setStatus("正在寫入網站檔案⋯");
 
     try {
-      if (state.activeTab === "content") {
+      const saveContent = state.activeTab === "content" || state.dirtyScopes.content;
+      const saveHtml = state.activeTab === "html" || state.dirtyScopes.html;
+      const saveTheme = state.activeTab === "theme" || state.dirtyScopes.theme;
+      const saveConfig =
+        state.activeTab === "brand" ||
+        state.activeTab === "about" ||
+        state.activeTab === "sync" ||
+        state.dirtyScopes.config;
+
+      if (saveConfig) {
+        const config = collectConfigFromForms();
+        const res = await fetch("/api/studio/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ config })
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.message || "儲存網站設定失敗");
+        state.config = config;
+        state.dirtyScopes.config = false;
+        updateGitBadge(data.git);
+      }
+
+      if (saveTheme) {
+        const theme = collectThemeFromForm();
+        const res = await fetch("/api/studio/theme", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ theme })
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.message || "儲存主題失敗");
+        state.theme = data.theme;
+        state.dirtyScopes.theme = false;
+        updateGitBadge(data.git);
+      }
+
+      if (saveHtml && state.currentWebFile.path) {
+        const content = document.getElementById("html-code-textarea").value;
+        const res = await fetch("/api/studio/web-file", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: state.currentWebFile.path, content })
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.message || "儲存 HTML 檔案失敗");
+        state.webFiles = data.webFiles;
+        state.dirtyScopes.html = false;
+        updateGitBadge(data.git);
+        updateHtmlLiveIframe(state.currentWebFile.path, content);
+      }
+
+      if (saveContent && document.getElementById("doc-slug").value.trim()) {
         if (state.editorMode === "wysiwyg") {
           document.getElementById("doc-body").value = formatHtmlPretty(
             document.getElementById("doc-wysiwyg").innerHTML
@@ -1084,48 +1152,13 @@
         state.currentDoc = { originalSlug: data.slug, originalType: data.type, isNew: false };
         document.getElementById("doc-slug").value = data.slug;
         state.manifest = data.manifest;
+        state.dirtyScopes.content = false;
         updateGitBadge(data.git);
         renderSidebarList();
         populateWikilinkPicker();
-      } else if (state.activeTab === "html") {
-        const content = document.getElementById("html-code-textarea").value;
-        const res = await fetch("/api/studio/web-file", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path: state.currentWebFile.path, content })
-        });
-        const data = await res.json();
-        if (!data.ok) throw new Error(data.message || "儲存 HTML 檔案失敗");
-        state.webFiles = data.webFiles;
-        updateGitBadge(data.git);
-        updateHtmlLiveIframe(state.currentWebFile.path, content);
-        reloadPreviewIframes();
-      } else if (state.activeTab === "theme") {
-        const theme = collectThemeFromForm();
-        const res = await fetch("/api/studio/theme", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ theme })
-        });
-        const data = await res.json();
-        if (!data.ok) throw new Error(data.message || "儲存主題失敗");
-        state.theme = data.theme;
-        updateGitBadge(data.git);
-        reloadPreviewIframes();
-      } else {
-        const config = collectConfigFromForms();
-        const res = await fetch("/api/studio/config", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ config })
-        });
-        const data = await res.json();
-        if (!data.ok) throw new Error(data.message || "儲存網站設定失敗");
-        state.config = config;
-        updateGitBadge(data.git);
-        reloadPreviewIframes();
       }
 
+      reloadPreviewIframes();
       state.dirty = false;
       const timeStr = new Date().toLocaleTimeString("zh-TW", { hour12: false });
       setStatus(`✓ 已於 ${timeStr} 寫入本機網站並更新索引`, "is-saved");

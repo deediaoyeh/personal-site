@@ -133,8 +133,32 @@ def build_manifest_and_rss():
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
 
+    # 讀取 site.config.js 的最新品牌名稱與簡介，同步更新 RSS 與 index.html 快取版本號
+    studio_title = "個人知識庫與電子報"
+    studio_desc = "在資訊過載的時代，慢下來拆解複雜問題、累積可複用的思維模型。"
+    cfg_path = ROOT_DIR / "site.config.js"
+    if cfg_path.exists():
+        raw_cfg = cfg_path.read_text(encoding="utf-8")
+        m_cfg = re.search(r"window\.SITE_CONFIG\s*=\s*(\{[\s\S]*\})\s*;?\s*$", raw_cfg)
+        if m_cfg:
+            try:
+                cfg_obj = json.loads(m_cfg.group(1))
+                studio_title = cfg_obj.get("brand", {}).get("studioTitle", studio_title)
+                studio_desc = cfg_obj.get("brand", {}).get("tagline", studio_desc)
+            except Exception:
+                pass
+
+    # 為 index.html 內的靜態設定與樣式加上版本查詢參數，徹底杜絕瀏覽器舊快取
+    index_path = ROOT_DIR / "index.html"
+    if index_path.exists():
+        ver = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        idx_html = index_path.read_text(encoding="utf-8")
+        idx_html = re.sub(r"<title>.*?</title>", f"<title>{escape(studio_title)}</title>", idx_html)
+        idx_html = re.sub(r'(\./(?:site\.config\.js|theme\.custom\.css|styles\.css|app\.js))(?:\?v=[^"\']+)?', rf"\1?v={ver}", idx_html)
+        index_path.write_text(idx_html, encoding="utf-8")
+
     # 產生 RSS 2.0 訂閱檔
-    site_url = os.environ.get("SITE_BASE_URL", "https://example.github.io").rstrip("/")
+    site_url = os.environ.get("SITE_BASE_URL", "https://deediaoyeh.github.io/personal-site").rstrip("/")
     rss_items = []
     for it in items:
         route_prefix = (
@@ -154,9 +178,9 @@ def build_manifest_and_rss():
     rss_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
-    <title>澄觀書齋 · 個人知識庫與電子報</title>
+    <title>{escape(studio_title)}</title>
     <link>{escape(site_url)}</link>
-    <description>在資訊過載的時代，慢下來拆解複雜問題、累積可複用的思維模型。</description>
+    <description>{escape(studio_desc)}</description>
     <language>zh-TW</language>
 {chr(10).join(rss_items)}
   </channel>
