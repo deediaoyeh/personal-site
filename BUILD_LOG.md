@@ -86,3 +86,14 @@
    - 修正 `server.py` 單行物件屬性解析與 `studio.js` 即時預覽完整表格／有序清單／引言渲染。
    - 驗證五大工作台分頁（`內容寫作`、`門面品牌`、`關於近況`、`視覺字級`、`電子報與同步`）、即時全站預覽 iframe 與 `POST /api/studio/item` 寫檔重建索引全數通過（HTTP 200，零 Console 錯誤），並將最新 `BUILD_LOG.md`（雲端檔案 ID：`1dOqOZPfY-BiwekE-Qczu-bYjeb-YRzAd`）同步更新至 Google Drive。
 
+### 階段 5：升級全功能 HTML 編輯器與綁定 GitHub 遠端座標（2026-11-25 07:55–08:03）
+1. **文章內容三模編輯器（`studio.html`、`studio.js`、`app.js`）**：
+   - 於「內容寫作」分頁加入 **`Markdown` ｜ `視覺化 HTML (所見即所得)` ｜ `HTML 原始碼`** 三模即時切換與雙向轉換。
+   - 支援視覺化富文本工具列（段落 P、H2、H3、粗體、斜體、底線、項目／編號清單、引言、超連結、重點提示匣、雙欄卡片、摺疊問答、表格、清除格式），前台引擎 `app.js` 亦同步支援 `format: html` 全文渲染、HTML 標題自動提取右側目錄（TOC）與 Markdown 混寫 HTML。
+2. **全站 HTML 網頁與樣式原始碼編輯器（新增頂部 `HTML 編輯器` 分頁 + `server.py` API）**：
+   - 新增 `/api/studio/web-files` 與 `/api/studio/web-file` 安全讀寫端點。
+   - 支援直接以帶行號程式碼編輯器修改 `index.html`、`styles.css`、`theme.custom.css`，並支援 **「＋ 新增獨立 HTML 網頁」**（自動套用靜謐書齋頁首與樣式骨架），右側配備即時渲染預覽與「桌面寬度／手機 390px」響應式切換。
+3. **GitHub 遠端倉庫預設綁定**：
+   - 本機 Git 已設定預設 `origin` 為 `https://github.com/deediaoyeh/personal-site.git`（對應 GitHub Pages 主站網址：`https://deediaoyeh.github.io/personal-site/`），並於「電子報與同步」分頁新增遠端倉庫網址修改與綁定介面。
+
+

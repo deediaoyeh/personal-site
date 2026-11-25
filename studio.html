@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>書齋離線工作台 · Offline Website Studio</title>
+  <title>書齋離線工作台 · Offline Website & HTML Studio</title>
   <link rel="stylesheet" href="./styles.css" />
   <link rel="stylesheet" href="./theme.custom.css" />
   <link rel="stylesheet" href="./studio.css" />
@@ -19,6 +19,7 @@
 
     <nav class="studio-tabs" role="tablist" aria-label="編輯模組切換">
       <button type="button" class="studio-tab is-active" data-tab="content">內容寫作</button>
+      <button type="button" class="studio-tab" data-tab="html">HTML 編輯器</button>
       <button type="button" class="studio-tab" data-tab="brand">門面品牌</button>
       <button type="button" class="studio-tab" data-tab="about">關於近況</button>
       <button type="button" class="studio-tab" data-tab="theme">視覺字級</button>
@@ -33,8 +34,8 @@
 
   <!-- 主工作區 -->
   <main class="studio-workspace">
-    <!-- ==================== Tab 1: 內容寫作台 (Markdown + 即時預覽) ==================== -->
-    <section id="tab-content" class="studio-panel is-active">
+    <!-- ==================== Tab 1: 內容寫作台 (支援 Markdown / 視覺化 HTML / HTML 原始碼) ==================== -->
+    <section id="tab-content" class="studio-panel">
       <div class="content-studio-grid">
         <!-- 左欄：文章與筆記目錄 -->
         <aside class="studio-sidebar">
@@ -55,7 +56,7 @@
           <div id="sidebar-item-list" class="sidebar-list"></div>
         </aside>
 
-        <!-- 中欄：結構化欄位 + Markdown 編輯器 -->
+        <!-- 中欄：結構化欄位 + 三模編輯器 (Markdown / 視覺化 HTML / HTML 原始碼) -->
         <div class="editor-pane">
           <div class="meta-form-grid">
             <label class="field-block span-2">
@@ -114,15 +115,14 @@
             </label>
           </div>
 
-          <!-- Markdown 快捷工具列 -->
-          <div class="md-toolbar">
-            <button type="button" class="tool-btn" data-md="h2">H2 段落標</button>
-            <button type="button" class="tool-btn" data-md="h3">H3 子標</button>
-            <button type="button" class="tool-btn" data-md="bold">粗體</button>
-            <button type="button" class="tool-btn" data-md="quote">引言區塊</button>
-            <button type="button" class="tool-btn" data-md="ul">清單</button>
-            <button type="button" class="tool-btn" data-md="table">表格範本</button>
-            <button type="button" class="tool-btn" data-md="hr">分隔線</button>
+          <!-- 編輯模式切換列 -->
+          <div class="editor-mode-bar">
+            <div class="mode-seg-group" role="tablist" aria-label="文章編輯器模式">
+              <button type="button" class="mode-seg-btn is-active" data-editor-mode="markdown">Markdown</button>
+              <button type="button" class="mode-seg-btn" data-editor-mode="wysiwyg">視覺化 HTML (所見即所得)</button>
+              <button type="button" class="mode-seg-btn" data-editor-mode="html-source">HTML 原始碼</button>
+            </div>
+
             <div class="wikilink-picker-wrap">
               <select id="insert-wikilink-select" class="tool-select">
                 <option value="">＋ 插入館藏雙向連結 [[...]]</option>
@@ -131,7 +131,42 @@
             <button type="button" id="delete-doc-btn" class="tool-btn danger-btn">刪除此篇</button>
           </div>
 
-          <textarea id="doc-body" class="md-textarea" placeholder="在此以 Markdown 書寫正文⋯ 支援 [[slug|顯示名稱]] 建立雙向連結。"></textarea>
+          <!-- 工具列 A：Markdown 模式工具 -->
+          <div id="toolbar-markdown" class="md-toolbar">
+            <button type="button" class="tool-btn" data-md="h2">H2 段落標</button>
+            <button type="button" class="tool-btn" data-md="h3">H3 子標</button>
+            <button type="button" class="tool-btn" data-md="bold">粗體</button>
+            <button type="button" class="tool-btn" data-md="quote">引言區塊</button>
+            <button type="button" class="tool-btn" data-md="ul">清單</button>
+            <button type="button" class="tool-btn" data-md="table">表格範本</button>
+            <button type="button" class="tool-btn" data-md="callout">HTML 重點匣</button>
+            <button type="button" class="tool-btn" data-md="hr">分隔線</button>
+          </div>
+
+          <!-- 工具列 B：視覺化 HTML (WYSIWYG) 與 HTML 原始碼工具 -->
+          <div id="toolbar-html" class="md-toolbar" hidden>
+            <button type="button" class="tool-btn" data-wysiwyg="p">段落 P</button>
+            <button type="button" class="tool-btn" data-wysiwyg="h2">標題 H2</button>
+            <button type="button" class="tool-btn" data-wysiwyg="h3">子標 H3</button>
+            <button type="button" class="tool-btn" data-wysiwyg="bold"><strong>B</strong> 粗體</button>
+            <button type="button" class="tool-btn" data-wysiwyg="italic"><em>I</em> 斜體</button>
+            <button type="button" class="tool-btn" data-wysiwyg="underline"><u>U</u> 底線</button>
+            <button type="button" class="tool-btn" data-wysiwyg="ul">項目清單</button>
+            <button type="button" class="tool-btn" data-wysiwyg="ol">編號清單</button>
+            <button type="button" class="tool-btn" data-wysiwyg="blockquote">引言</button>
+            <button type="button" class="tool-btn" data-wysiwyg="link">超連結</button>
+            <button type="button" class="tool-btn" data-html-block="callout">＋重點提示匣</button>
+            <button type="button" class="tool-btn" data-html-block="twocol">＋雙欄卡片</button>
+            <button type="button" class="tool-btn" data-html-block="details">＋摺疊問答</button>
+            <button type="button" class="tool-btn" data-html-block="table">＋表格</button>
+            <button type="button" class="tool-btn" data-wysiwyg="clean">清除格式</button>
+          </div>
+
+          <!-- 編輯畫布 1：Markdown / HTML 原始碼文字區 -->
+          <textarea id="doc-body" class="md-textarea" placeholder="在此書寫正文⋯ 可隨時於上方切換 Markdown、視覺化 HTML 或 HTML 原始碼模式。"></textarea>
+
+          <!-- 編輯畫布 2：視覺化 HTML 所見即所得畫布 (contenteditable) -->
+          <div id="doc-wysiwyg" class="wysiwyg-canvas prose" contenteditable="true" hidden spellcheck="false"></div>
         </div>
 
         <!-- 右欄：即時靜謐書齋排版預覽 -->
@@ -154,7 +189,56 @@
       </div>
     </section>
 
-    <!-- ==================== Tab 2: 門面與品牌設定 ==================== -->
+    <!-- ==================== Tab 2: 全站 HTML 頁面與模板編輯器 ==================== -->
+    <section id="tab-html" class="studio-panel" hidden>
+      <div class="html-studio-grid">
+        <!-- 左欄：網站 HTML / CSS 檔案清單 -->
+        <aside class="studio-sidebar">
+          <div class="sidebar-top">
+            <span class="mono-label" style="font-size:0.72rem; color:var(--ink-muted);">SITE HTML & CSS FILES</span>
+            <button type="button" id="new-html-page-btn" class="studio-btn studio-btn-outline full-w">
+              ＋ 新增獨立 HTML 網頁
+            </button>
+          </div>
+          <div id="html-file-list" class="sidebar-list"></div>
+        </aside>
+
+        <!-- 中欄：帶行號 HTML / CSS 原始碼編輯器 -->
+        <div class="html-code-pane">
+          <div class="md-toolbar">
+            <span id="current-html-filepath" class="mono-label" style="font-size:0.78rem; font-weight:500; margin-right:8px;">index.html</span>
+            <button type="button" class="tool-btn" data-html-snippet="section">＋書齋區段 &lt;section&gt;</button>
+            <button type="button" class="tool-btn" data-html-snippet="callout">＋重點匣</button>
+            <button type="button" class="tool-btn" data-html-snippet="twocol">＋雙欄格線</button>
+            <button type="button" class="tool-btn" data-html-snippet="details">＋摺疊區塊</button>
+            <button type="button" class="tool-btn" data-html-snippet="cta">＋訂閱/行動卡</button>
+            <button type="button" id="delete-html-page-btn" class="tool-btn danger-btn" hidden>刪除此網頁</button>
+          </div>
+
+          <div class="code-editor-wrap">
+            <div id="html-line-numbers" class="code-line-numbers mono-label" aria-hidden="true">1</div>
+            <textarea id="html-code-textarea" class="code-textarea mono-label" spellcheck="false" wrap="off" placeholder="選擇左側 HTML 或 CSS 檔案開始編輯⋯"></textarea>
+          </div>
+        </div>
+
+        <!-- 右欄：即時網頁渲染預覽（支援桌機 / 手機寬度切換） -->
+        <div class="live-site-iframe-pane">
+          <div class="preview-pane-header mono-label">
+            <span>LIVE HTML RENDER · 即時網頁預覽</span>
+            <div style="display:flex; gap:6px;">
+              <button type="button" class="tool-btn is-active" data-viewport="desktop">桌面寬度</button>
+              <button type="button" class="tool-btn" data-viewport="mobile">手機 390px</button>
+              <button type="button" class="tool-btn" id="refresh-html-preview-btn">重新整理</button>
+            </div>
+          </div>
+          <div class="iframe-viewport-stage" id="html-iframe-stage">
+            <iframe id="html-live-iframe" src="./" class="site-preview-iframe" title="HTML 即時預覽"></iframe>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== Tab 3: 門面與品牌設定 ==================== -->
     <section id="tab-brand" class="studio-panel" hidden>
       <div class="split-builder-grid">
         <div class="form-scroll-pane">
@@ -237,7 +321,7 @@
       </div>
     </section>
 
-    <!-- ==================== Tab 3: 關於與近況 (/now) ==================== -->
+    <!-- ==================== Tab 4: 關於與近況 (/now) ==================== -->
     <section id="tab-about" class="studio-panel" hidden>
       <div class="split-builder-grid">
         <div class="form-scroll-pane">
@@ -290,7 +374,7 @@
       </div>
     </section>
 
-    <!-- ==================== Tab 4: 視覺氣質與字級微調 ==================== -->
+    <!-- ==================== Tab 5: 視覺氣質與字級微調 ==================== -->
     <section id="tab-theme" class="studio-panel" hidden>
       <div class="split-builder-grid">
         <div class="form-scroll-pane">
@@ -382,7 +466,7 @@
 
         <div class="live-site-iframe-pane">
           <div class="preview-pane-header mono-label">
-            <span>THEME PREVIEW · 按「儲存變更 ⌘S」即套用至全站</span>
+            <span>THEME PREVIEW · 按「儲存 ⌘S」即套用至全站</span>
             <button type="button" class="tool-btn" data-refresh-iframe="theme-iframe">重新整理預覽</button>
           </div>
           <iframe id="theme-iframe" src="./#/" class="site-preview-iframe" title="主題即時預覽"></iframe>
@@ -390,7 +474,7 @@
       </div>
     </section>
 
-    <!-- ==================== Tab 5: 電子報與雲端同步控制台 ==================== -->
+    <!-- ==================== Tab 6: 電子報與雲端同步控制台 ==================== -->
     <section id="tab-sync" class="studio-panel" hidden>
       <div class="sync-console-layout">
         <div class="form-scroll-pane">
@@ -428,6 +512,19 @@
               <input type="url" id="cfg-nl-scripturl" class="studio-field-input mono-label" placeholder="https://script.google.com/macros/s/.../exec" />
             </label>
           </div>
+
+          <hr class="pane-divider" />
+
+          <h2 class="pane-section-title">GitHub 主站遠端倉庫設定</h2>
+          <div class="form-stack">
+            <label class="field-block">
+              <span class="field-label">GitHub 遠端倉庫網址 (Origin URL)</span>
+              <div style="display:flex; gap:8px;">
+                <input type="url" id="git-remote-input" class="studio-field-input mono-label" placeholder="https://github.com/deediaoyeh/personal-site.git" />
+                <button type="button" id="save-git-remote-btn" class="studio-btn studio-btn-outline">綁定網址</button>
+              </div>
+            </label>
+          </div>
         </div>
 
         <div class="sync-status-pane">
@@ -437,8 +534,10 @@
           </p>
 
           <div class="cloud-endpoints-box mono-label">
-            <div>Google Drive Vault ID: <strong>1n_ZQELr2H9f1Zre0rmntedtvyrohcGxS</strong></div>
+            <div>GitHub 倉庫網址: <strong id="display-github-repo">https://github.com/deediaoyeh/personal-site</strong></div>
+            <div>GitHub Pages 主站: <strong id="display-github-pages">https://deediaoyeh.github.io/personal-site/</strong></div>
             <div>Netlify 備份站網址: <strong>https://deediao-studio.netlify.app</strong></div>
+            <div>Google Drive Vault ID: <strong>1n_ZQELr2H9f1Zre0rmntedtvyrohcGxS</strong></div>
             <div>本機未提交變更數: <strong id="git-changed-count">檢查中⋯</strong></div>
           </div>
 

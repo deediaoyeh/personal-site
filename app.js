@@ -479,8 +479,9 @@
     }
 
     const rawMd = await loadMarkdown(item.path);
-    const { body } = splitFrontmatter(rawMd);
-    const { html, headings } = parseMarkdown(body);
+    const { meta, body } = splitFrontmatter(rawMd);
+    const docFormat = (meta.format || item.format || "markdown").toLowerCase();
+    const { html, headings } = docFormat === "html" ? parseHtmlContent(body) : parseMarkdown(body);
 
     // 計算雙向連結：找出所有引用到此 slug，或此篇引用到的館藏項目
     const relatedItems = findConnections(item, body);
@@ -733,7 +734,45 @@
   function splitFrontmatter(raw) {
     const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
     if (!match) return { meta: {}, body: raw };
-    return { meta: {}, body: match[2] };
+    const meta = {};
+    match[1].split(/\r?\n/).forEach((line) => {
+      const idx = line.indexOf(":");
+      if (idx > 0) {
+        meta[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+      }
+    });
+    return { meta, body: match[2] };
+  }
+
+  function parseHtmlContent(rawHtml) {
+    const headings = [];
+    // 解析雙向連結 [[slug|label]]
+    let processed = rawHtml.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, targetSlug, customLabel) => {
+      const cleanSlug = targetSlug.trim();
+      const found = state.manifest ? state.manifest.items.find((i) => i.slug === cleanSlug) : null;
+      const routePrefix = found
+        ? found.type === "essay"
+          ? "essays"
+          : found.type === "note"
+          ? "notes"
+          : "letters"
+        : "notes";
+      const label = customLabel ? customLabel.trim() : found ? found.title : cleanSlug;
+      return `<a href="#/${routePrefix}/${encodeURIComponent(cleanSlug)}" class="wikilink">${escapeHtml(label)}</a>`;
+    });
+
+    // 為 HTML 內的 h2 / h3 自動補上目錄錨點 ID
+    processed = processed.replace(/<h([23])([^>]*)>([\s\S]*?)<\/h\1>/gi, (full, lvl, attrs, inner) => {
+      const plainText = inner.replace(/<[^>]+>/g, "").trim();
+      const idMatch = attrs.match(/\bid=["']([^"']+)["']/i);
+      const id =
+        idMatch ? idMatch[1] : "sec-" + headings.length + "-" + plainText.toLowerCase().replace(/[^\w\u4e00-\u9fa5]+/g, "-");
+      headings.push({ id, level: Number(lvl), text: plainText });
+      if (idMatch) return full;
+      return `<h${lvl}${attrs} id="${escapeHtml(id)}">${inner}</h${lvl}>`;
+    });
+
+    return { html: processed, headings };
   }
 
   function parseMarkdown(md) {
@@ -836,6 +875,13 @@
         continue;
       } else if (tableBuffer.length > 0) {
         flushTable();
+      }
+
+      // 原生支援在 Markdown 中直接撰寫 HTML 區塊標籤
+      if (/^<\/?(div|section|aside|figure|figcaption|details|summary|table|thead|tbody|tr|td|th|iframe|blockquote|p|ul|ol|li|h[1-6]|hr|br)\b/i.test(trimmed)) {
+        flushAll();
+        out.push(line);
+        continue;
       }
 
       // 分隔線

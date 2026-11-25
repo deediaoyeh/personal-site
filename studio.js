@@ -1,6 +1,5 @@
 /**
- * studio.js — 書齋離線編輯工作台前端控制器
- * 100% 無外部套件依賴，與本機 server.py 通訊，直接讀寫 Markdown、site.config.js 與 theme.custom.css。
+ * studio.js — 書齋離線編輯工作台前端控制器（含 Markdown / 視覺化 HTML / HTML 原始碼三模文章編輯器 ＋ 全站 HTML 網頁編輯器）
  */
 (function () {
   "use strict";
@@ -52,13 +51,26 @@
     }
   };
 
+  const HTML_BLOCKS = {
+    callout: `<aside class="callout-box">\n  <strong>書齋重點筆記</strong>\n  <p>在此寫下需要特別凸顯的核心原則、提醒或研究結論。</p>\n</aside>\n`,
+    twocol: `<div class="two-col-html">\n  <div>\n    <h3>觀點 A</h3>\n    <p>左側對照說明內容。</p>\n  </div>\n  <div>\n    <h3>觀點 B</h3>\n    <p>右側對照說明內容。</p>\n  </div>\n</div>\n`,
+    details: `<details class="craft-details">\n  <summary>點擊展開延伸思考或常見問答</summary>\n  <p style="margin-top:10px;">這裡放置展開後的詳細補充說明。</p>\n</details>\n`,
+    table: `<table>\n  <thead>\n    <tr><th>面向</th><th>傳統做法</th><th>書齋系統做法</th></tr>\n  </thead>\n  <tbody>\n    <tr><td>核心差異</td><td>追逐即時熱點</td><td>累積常青結構</td></tr>\n  </tbody>\n</table>\n`,
+    section: `\n<section class="home-section">\n  <span class="section-kicker mono-label">CUSTOM SECTION</span>\n  <h2 class="section-heading serif">自訂章節標題</h2>\n  <p style="color:var(--ink-secondary); max-width:62ch;">在此編寫自訂 HTML 區塊內容⋯</p>\n</section>\n`,
+    cta: `\n<div class="newsletter-panel">\n  <span class="section-kicker mono-label">SPECIAL INVITATION</span>\n  <h3 class="newsletter-title serif">自訂行動呼籲或專案邀請</h3>\n  <p class="newsletter-promise" style="margin-bottom:16px;">說明你的諮詢服務、專題計畫或讀者專屬資源。</p>\n  <a href="#/about" class="studio-btn studio-btn-primary">進一步了解 →</a>\n</div>\n`
+  };
+
   const state = {
     activeTab: "content",
     config: null,
     theme: null,
     manifest: { items: [] },
+    webFiles: [],
+    currentWebFile: { path: "index.html", isCore: true },
     filterType: "all",
     searchQuery: "",
+    editorMode: "markdown", // "markdown" | "wysiwyg" | "html-source"
+    docFormat: "markdown",  // "markdown" | "html"
     currentDoc: {
       originalSlug: "",
       originalType: "",
@@ -73,21 +85,24 @@
   async function init() {
     bindTabs();
     bindContentStudioEvents();
+    bindHtmlPageEditorEvents();
     bindConfigAndThemeEvents();
     bindGlobalShortcuts();
 
     try {
       const res = await fetch("/api/studio/bootstrap");
-      if (!res.ok) throw new Error("請透過 start.command 或 python3 server.py 啟動工作台");
+      if (!res.ok) throw new Error("請透過 start-studio.command 或 python3 server.py 啟動工作台");
       const data = await res.json();
 
       state.config = data.config;
       state.theme = data.theme;
       state.manifest = data.manifest;
+      state.webFiles = data.webFiles || [];
 
       populateConfigForms();
       populateThemeForm();
       renderSidebarList();
+      renderWebFilesList();
       populateWikilinkPicker();
       updateGitBadge(data.git);
 
@@ -96,6 +111,10 @@
         await selectDoc(first.type, first.slug);
       } else {
         startNewDoc("essay");
+      }
+
+      if (state.webFiles.length > 0) {
+        await selectWebFile(state.webFiles[0].path);
       }
     } catch (err) {
       setStatus("無法連接本機編輯服務 — 請執行 python3 server.py", "is-dirty");
@@ -116,9 +135,25 @@
   function updateGitBadge(gitInfo) {
     const el = document.getElementById("git-changed-count");
     if (!el || !gitInfo) return;
-    el.textContent = gitInfo.initialized
-      ? `${gitInfo.changedCount} 個檔案待同步`
-      : "尚未初始化 Git";
+    el.textContent = gitInfo.initialized ? `${gitInfo.changedCount} 個檔案待同步` : "尚未初始化 Git";
+
+    const remoteUrl = gitInfo.remoteUrl || "https://github.com/deediaoyeh/personal-site.git";
+    const remoteInput = document.getElementById("git-remote-input");
+    if (remoteInput && !remoteInput.value) {
+      remoteInput.value = remoteUrl;
+    }
+    updateGitHubDisplayUrls(remoteUrl);
+  }
+
+  function updateGitHubDisplayUrls(remoteUrl) {
+    const cleanRepo = remoteUrl.replace(/\.git$/i, "");
+    const repoEl = document.getElementById("display-github-repo");
+    const pagesEl = document.getElementById("display-github-pages");
+    if (repoEl) repoEl.textContent = cleanRepo;
+    const m = cleanRepo.match(/github\.com[:/]([^/]+)\/([^/]+)$/i);
+    if (pagesEl && m) {
+      pagesEl.textContent = `https://${m[1]}.github.io/${m[2]}/`;
+    }
   }
 
   // =========================================================================
@@ -146,7 +181,7 @@
   }
 
   // =========================================================================
-  // Tab 1: 內容寫作台
+  // Tab 1: 內容寫作台（支援 Markdown / 視覺化 HTML / HTML 原始碼）
   // =========================================================================
   function renderSidebarList() {
     const listEl = document.getElementById("sidebar-item-list");
@@ -167,9 +202,10 @@
       .map((item) => {
         const selected =
           item.slug === state.currentDoc.originalSlug && item.type === state.currentDoc.originalType;
+        const fmtBadge = item.format === "html" ? " · HTML" : "";
         return `
           <button type="button" class="sidebar-item ${selected ? "is-selected" : ""}" data-doc-type="${escapeAttr(item.type)}" data-doc-slug="${escapeAttr(item.slug)}">
-            <div class="sidebar-item-meta mono-label">${typeTag[item.type] || item.type} · ${escapeHtml(item.date)}</div>
+            <div class="sidebar-item-meta mono-label">${typeTag[item.type] || item.type} · ${escapeHtml(item.date)}${fmtBadge}</div>
             <div class="sidebar-item-title">${escapeHtml(item.title)}</div>
           </button>
         `;
@@ -201,6 +237,7 @@
     const { meta, body } = await res.json();
 
     state.currentDoc = { originalSlug: slug, originalType: type, isNew: false };
+    state.docFormat = (meta.format || "markdown").toLowerCase();
 
     document.getElementById("doc-title").value = meta.title || "";
     document.getElementById("doc-type").value = meta.type || type;
@@ -212,10 +249,13 @@
     document.getElementById("doc-issue").value = meta.issue || "";
     document.getElementById("doc-summary").value = meta.summary || "";
     document.getElementById("doc-body").value = body || "";
+    document.getElementById("doc-wysiwyg").innerHTML =
+      state.docFormat === "html" ? body || "<p><br></p>" : simplePreviewMarkdown(body || "");
 
+    applyEditorModeUI(state.docFormat === "html" ? "wysiwyg" : "markdown", false);
     toggleTypeSpecificFields(meta.type || type);
     renderSidebarList();
-    renderLiveMarkdownPreview();
+    renderLiveContentPreview();
     state.dirty = false;
     setStatus(`正在編輯：${meta.title || slug}`);
   }
@@ -235,18 +275,74 @@
     document.getElementById("doc-notecode").value = `NOTE · ${String(count + 20).padStart(3, "0")}`;
     document.getElementById("doc-issue").value = docType === "letter" ? String(count) : "";
     document.getElementById("doc-summary").value = "";
-    document.getElementById("doc-body").value =
-      docType === "essay"
-        ? "## 問題背景\n\n在這裡開始書寫你的核心推論⋯\n"
-        : docType === "note"
-        ? "寫下單一原子概念或讀書摘錄⋯\n"
-        : "週日早安，歡迎讀到新一期的電子報。\n\n## 一、本期短論\n\n";
+
+    if (state.editorMode === "wysiwyg" || state.editorMode === "html-source") {
+      state.docFormat = "html";
+      const starterHtml =
+        docType === "essay"
+          ? "<h2>問題背景</h2>\n<p>在此開始以 HTML 視覺化或原始碼模式撰寫你的核心論述⋯</p>\n"
+          : "<p>在此輸入你的筆記或信件內容⋯</p>\n";
+      document.getElementById("doc-body").value = starterHtml;
+      document.getElementById("doc-wysiwyg").innerHTML = starterHtml;
+    } else {
+      state.docFormat = "markdown";
+      const starterMd =
+        docType === "essay"
+          ? "## 問題背景\n\n在這裡開始書寫你的核心推論⋯\n"
+          : docType === "note"
+          ? "寫下單一原子概念或讀書摘錄⋯\n"
+          : "週日早安，歡迎讀到新一期的電子報。\n\n## 一、本期短論\n\n";
+      document.getElementById("doc-body").value = starterMd;
+      document.getElementById("doc-wysiwyg").innerHTML = simplePreviewMarkdown(starterMd);
+    }
 
     toggleTypeSpecificFields(docType);
     renderSidebarList();
-    renderLiveMarkdownPreview();
+    renderLiveContentPreview();
     document.getElementById("doc-title").focus();
     setStatus("已建立新草稿 — 輸入標題並按 ⌘S 即可寫入網站", "is-dirty");
+  }
+
+  function applyEditorModeUI(nextMode, convertContent = true) {
+    const prevMode = state.editorMode;
+    const ta = document.getElementById("doc-body");
+    const wy = document.getElementById("doc-wysiwyg");
+
+    if (convertContent && prevMode !== nextMode) {
+      if (prevMode === "markdown" && (nextMode === "wysiwyg" || nextMode === "html-source")) {
+        // Markdown -> HTML
+        const html = state.docFormat === "html" ? ta.value : simplePreviewMarkdown(ta.value);
+        ta.value = formatHtmlPretty(html);
+        wy.innerHTML = html || "<p><br></p>";
+        state.docFormat = "html";
+        markDirty();
+      } else if (prevMode === "wysiwyg" && nextMode === "html-source") {
+        ta.value = formatHtmlPretty(wy.innerHTML);
+        state.docFormat = "html";
+      } else if (prevMode === "html-source" && nextMode === "wysiwyg") {
+        wy.innerHTML = ta.value || "<p><br></p>";
+        state.docFormat = "html";
+      } else if ((prevMode === "wysiwyg" || prevMode === "html-source") && nextMode === "markdown") {
+        const currentHtml = prevMode === "wysiwyg" ? wy.innerHTML : ta.value;
+        ta.value = htmlToMarkdown(currentHtml);
+        state.docFormat = "markdown";
+        markDirty();
+      }
+    }
+
+    state.editorMode = nextMode;
+    document.querySelectorAll("[data-editor-mode]").forEach((btn) => {
+      btn.classList.toggle("is-active", btn.dataset.editorMode === nextMode);
+    });
+
+    const isMd = nextMode === "markdown";
+    const isWy = nextMode === "wysiwyg";
+    document.getElementById("toolbar-markdown").hidden = !isMd;
+    document.getElementById("toolbar-html").hidden = isMd;
+    ta.hidden = isWy;
+    wy.hidden = !isWy;
+
+    renderLiveContentPreview();
   }
 
   function toggleTypeSpecificFields(type) {
@@ -256,6 +352,13 @@
   }
 
   function bindContentStudioEvents() {
+    // 三模切換器
+    document.querySelectorAll("[data-editor-mode]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        applyEditorModeUI(btn.dataset.editorMode, true);
+      });
+    });
+
     document.querySelectorAll("[data-filter-type]").forEach((btn) => {
       btn.addEventListener("click", () => {
         state.filterType = btn.dataset.filterType;
@@ -276,7 +379,7 @@
     document.getElementById("doc-type").addEventListener("change", (e) => {
       toggleTypeSpecificFields(e.target.value);
       markDirty();
-      renderLiveMarkdownPreview();
+      renderLiveContentPreview();
     });
 
     [
@@ -292,23 +395,121 @@
     ].forEach((id) => {
       document.getElementById(id).addEventListener("input", () => {
         markDirty();
-        renderLiveMarkdownPreview();
+        renderLiveContentPreview();
       });
     });
 
-    // Markdown 工具列插入
+    // 支援 doc-body 在 HTML 原始碼模式下按 Tab 縮排
+    document.getElementById("doc-body").addEventListener("keydown", handleTabIndent);
+
+    // 視覺化 HTML 畫布輸入連動
+    document.getElementById("doc-wysiwyg").addEventListener("input", () => {
+      document.getElementById("doc-body").value = document.getElementById("doc-wysiwyg").innerHTML;
+      markDirty();
+      renderLiveContentPreview();
+    });
+
+    // Markdown 工具列
     document.querySelectorAll("[data-md]").forEach((btn) => {
       btn.addEventListener("click", () => {
-        insertMarkdownSnippet(btn.dataset.md);
+        const snippets = {
+          h2: "\n## 段落標題\n",
+          h3: "\n### 子標題\n",
+          bold: "**重點文字**",
+          quote: "\n> 在此輸入引言或核心洞見。\n",
+          ul: "\n- 第一點觀察\n- 第二點觀察\n",
+          table: "\n| 比較面向 | 選項 A | 選項 B |\n| --- | --- | --- |\n| 核心優勢 | 說明 | 說明 |\n",
+          callout: "\n" + HTML_BLOCKS.callout + "\n",
+          hr: "\n---\n"
+        };
+        insertAtCursor(document.getElementById("doc-body"), snippets[btn.dataset.md] || "");
+        markDirty();
+        renderLiveContentPreview();
       });
     });
 
+    // WYSIWYG 富文本工具列
+    document.querySelectorAll("[data-wysiwyg]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const cmd = btn.dataset.wysiwyg;
+        if (state.editorMode === "html-source") {
+          // 在 HTML 原始碼模式下直接插入對應 HTML 標籤
+          const rawTags = {
+            p: "<p>段落內容</p>\n",
+            h2: "<h2>段落標題</h2>\n",
+            h3: "<h3>子標題</h3>\n",
+            bold: "<strong>重點文字</strong>",
+            italic: "<em>強調文字</em>",
+            underline: "<u>底線文字</u>",
+            ul: "<ul>\n  <li>項目一</li>\n  <li>項目二</li>\n</ul>\n",
+            ol: "<ol>\n  <li>步驟一</li>\n  <li>步驟二</li>\n</ol>\n",
+            blockquote: "<blockquote><p>引言內容</p></blockquote>\n",
+            link: '<a href="https://">連結文字</a>',
+            clean: ""
+          };
+          if (rawTags[cmd]) {
+            insertAtCursor(document.getElementById("doc-body"), rawTags[cmd]);
+          }
+        } else {
+          const wy = document.getElementById("doc-wysiwyg");
+          wy.focus();
+          if (cmd === "p" || cmd === "h2" || cmd === "h3" || cmd === "blockquote") {
+            document.execCommand("formatBlock", false, cmd.toUpperCase());
+          } else if (cmd === "bold") {
+            document.execCommand("bold", false, null);
+          } else if (cmd === "italic") {
+            document.execCommand("italic", false, null);
+          } else if (cmd === "underline") {
+            document.execCommand("underline", false, null);
+          } else if (cmd === "ul") {
+            document.execCommand("insertUnorderedList", false, null);
+          } else if (cmd === "ol") {
+            document.execCommand("insertOrderedList", false, null);
+          } else if (cmd === "link") {
+            const url = window.prompt("請輸入連結網址：", "https://");
+            if (url) document.execCommand("createLink", false, url);
+          } else if (cmd === "clean") {
+            document.execCommand("removeFormat", false, null);
+          }
+          document.getElementById("doc-body").value = wy.innerHTML;
+        }
+        markDirty();
+        renderLiveContentPreview();
+      });
+    });
+
+    // 插入進階 HTML 元件區塊（重點匣、雙欄卡、摺疊問答、表格）
+    document.querySelectorAll("[data-html-block]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const htmlSnippet = HTML_BLOCKS[btn.dataset.htmlBlock] || "";
+        if (state.editorMode === "wysiwyg") {
+          const wy = document.getElementById("doc-wysiwyg");
+          wy.focus();
+          document.execCommand("insertHTML", false, htmlSnippet);
+          document.getElementById("doc-body").value = wy.innerHTML;
+        } else {
+          insertAtCursor(document.getElementById("doc-body"), "\n" + htmlSnippet);
+        }
+        markDirty();
+        renderLiveContentPreview();
+      });
+    });
+
+    // 雙向連結插入器（同時支援 Markdown 與 HTML 模式）
     document.getElementById("insert-wikilink-select").addEventListener("change", (e) => {
-      if (!e.target.value) return;
-      insertAtCursor(document.getElementById("doc-body"), e.target.value);
+      const val = e.target.value;
+      if (!val) return;
+      if (state.editorMode === "wysiwyg") {
+        const wy = document.getElementById("doc-wysiwyg");
+        wy.focus();
+        document.execCommand("insertText", false, val);
+        document.getElementById("doc-body").value = wy.innerHTML;
+      } else {
+        insertAtCursor(document.getElementById("doc-body"), val);
+      }
       e.target.value = "";
       markDirty();
-      renderLiveMarkdownPreview();
+      renderLiveContentPreview();
     });
 
     document.getElementById("delete-doc-btn").addEventListener("click", async () => {
@@ -317,7 +518,7 @@
         return;
       }
       const title = document.getElementById("doc-title").value || state.currentDoc.originalSlug;
-      if (!window.confirm(`確定要刪除「${title}」嗎？此動作會移除對應的 .md 檔案。`)) return;
+      if (!window.confirm(`確定要刪除「${title}」嗎？此動作會移除對應的內容檔案。`)) return;
 
       const res = await fetch(
         `/api/studio/item?type=${encodeURIComponent(state.currentDoc.originalType)}&slug=${encodeURIComponent(
@@ -341,53 +542,236 @@
     });
   }
 
-  function insertMarkdownSnippet(kind) {
-    const ta = document.getElementById("doc-body");
-    const snippets = {
-      h2: "\n## 段落標題\n",
-      h3: "\n### 子標題\n",
-      bold: "**重點文字**",
-      quote: "\n> 在此輸入引言或核心洞見。\n",
-      ul: "\n- 第一點觀察\n- 第二點觀察\n",
-      table: "\n| 比較面向 | 選項 A | 選項 B |\n| --- | --- | --- |\n| 核心優勢 | 說明 | 說明 |\n",
-      hr: "\n---\n"
-    };
-    insertAtCursor(ta, snippets[kind] || "");
-    markDirty();
-    renderLiveMarkdownPreview();
-  }
-
-  function insertAtCursor(textarea, snippet) {
-    const start = textarea.selectionStart || 0;
-    const end = textarea.selectionEnd || 0;
-    const val = textarea.value;
-    textarea.value = val.slice(0, start) + snippet + val.slice(end);
-    textarea.focus();
-    const pos = start + snippet.length;
-    textarea.setSelectionRange(pos, pos);
-  }
-
-  function renderLiveMarkdownPreview() {
+  function renderLiveContentPreview() {
     const title = document.getElementById("doc-title").value.trim() || "未命名標題";
     const type = document.getElementById("doc-type").value;
     const date = (document.getElementById("doc-date").value || todayStr()).replace(/-/g, ".");
     const summary = document.getElementById("doc-summary").value.trim();
-    const body = document.getElementById("doc-body").value;
+    const rawBody =
+      state.editorMode === "wysiwyg"
+        ? document.getElementById("doc-wysiwyg").innerHTML
+        : document.getElementById("doc-body").value;
 
-    const cleanChars = body.replace(/\s+/g, "").length;
-    document.getElementById("word-count-indicator").textContent = `${cleanChars} 字 · 約 ${Math.max(
+    const textOnly = rawBody.replace(/<[^>]+>/g, "").replace(/\s+/g, "");
+    document.getElementById("word-count-indicator").textContent = `${textOnly.length} 字 · 約 ${Math.max(
       1,
-      Math.round(cleanChars / 380)
+      Math.round(textOnly.length / 380)
     )} min 閱讀`;
 
-    document.getElementById("preview-meta").textContent = `${date} · ${type.toUpperCase()}`;
+    document.getElementById("preview-meta").textContent = `${date} · ${type.toUpperCase()} · ${state.docFormat.toUpperCase()}`;
     document.getElementById("preview-title").textContent = title;
     document.getElementById("preview-summary").textContent = summary;
-    document.getElementById("preview-prose").innerHTML = simplePreviewMarkdown(body);
+
+    if (state.docFormat === "html") {
+      document.getElementById("preview-prose").innerHTML = renderWikilinksInHtml(rawBody);
+    } else {
+      document.getElementById("preview-prose").innerHTML = simplePreviewMarkdown(rawBody);
+    }
   }
 
   // =========================================================================
-  // Tab 2, 3, 4, 5: 門面、關於、視覺、電子報與同步
+  // Tab 2: 全站 HTML 頁面與樣式原始碼編輯器
+  // =========================================================================
+  function renderWebFilesList() {
+    const listEl = document.getElementById("html-file-list");
+    listEl.innerHTML = state.webFiles
+      .map((f) => {
+        const selected = f.path === state.currentWebFile.path;
+        return `
+          <button type="button" class="sidebar-item ${selected ? "is-selected" : ""}" data-web-path="${escapeAttr(f.path)}">
+            <div class="sidebar-item-meta mono-label">${escapeHtml(f.label)}</div>
+            <div class="sidebar-item-title mono-label" style="font-size:0.86rem;">${escapeHtml(f.path)}</div>
+          </button>
+        `;
+      })
+      .join("");
+
+    listEl.querySelectorAll("[data-web-path]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        selectWebFile(btn.dataset.webPath);
+      });
+    });
+  }
+
+  async function selectWebFile(relPath) {
+    const res = await fetch(`/api/studio/web-file?path=${encodeURIComponent(relPath)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+
+    state.currentWebFile = { path: data.path, isCore: data.isCore };
+    document.getElementById("current-html-filepath").textContent = data.path;
+    document.getElementById("delete-html-page-btn").hidden = Boolean(data.isCore);
+
+    const codeTa = document.getElementById("html-code-textarea");
+    codeTa.value = data.content || "";
+    updateCodeLineNumbers();
+    renderWebFilesList();
+    updateHtmlLiveIframe(data.path, data.content);
+    setStatus(`正在編輯網頁檔案：${data.path}`);
+  }
+
+  function updateCodeLineNumbers() {
+    const codeTa = document.getElementById("html-code-textarea");
+    const lineNumsEl = document.getElementById("html-line-numbers");
+    const count = (codeTa.value.match(/\n/g) || []).length + 1;
+    const nums = [];
+    for (let i = 1; i <= count; i++) nums.push(i);
+    lineNumsEl.textContent = nums.join("\n");
+  }
+
+  function updateHtmlLiveIframe(filePath, rawCode) {
+    const iframe = document.getElementById("html-live-iframe");
+    if (!iframe) return;
+    if (filePath.endsWith(".html")) {
+      // 將相對路徑注入 <base href="./"> 讓即時預覽無須先存檔就能載入全套靜謐書齋 CSS 與字體！
+      const baseTag = `<base href="${window.location.origin}/" />`;
+      const injected = rawCode.includes("<head>")
+        ? rawCode.replace("<head>", `<head>\n  ${baseTag}`)
+        : `${baseTag}\n${rawCode}`;
+      iframe.removeAttribute("src");
+      iframe.srcdoc = injected;
+    } else {
+      iframe.removeAttribute("srcdoc");
+      iframe.src = "./#/";
+    }
+  }
+
+  function bindHtmlPageEditorEvents() {
+    const codeTa = document.getElementById("html-code-textarea");
+    const lineNumsEl = document.getElementById("html-line-numbers");
+
+    let previewTimer = null;
+    codeTa.addEventListener("input", () => {
+      markDirty();
+      updateCodeLineNumbers();
+      clearTimeout(previewTimer);
+      previewTimer = setTimeout(() => {
+        if (state.currentWebFile.path.endsWith(".html")) {
+          updateHtmlLiveIframe(state.currentWebFile.path, codeTa.value);
+        }
+      }, 220);
+    });
+
+    codeTa.addEventListener("scroll", () => {
+      lineNumsEl.scrollTop = codeTa.scrollTop;
+    });
+
+    codeTa.addEventListener("keydown", handleTabIndent);
+
+    // 快捷插入 HTML 元件片段
+    document.querySelectorAll("[data-html-snippet]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const snippet = HTML_BLOCKS[btn.dataset.htmlSnippet] || "";
+        insertAtCursor(codeTa, snippet);
+        markDirty();
+        updateCodeLineNumbers();
+        if (state.currentWebFile.path.endsWith(".html")) {
+          updateHtmlLiveIframe(state.currentWebFile.path, codeTa.value);
+        }
+      });
+    });
+
+    // 新增獨立 HTML 網頁
+    document.getElementById("new-html-page-btn").addEventListener("click", async () => {
+      const name = window.prompt("請輸入新 HTML 網頁檔名（英文與連字號，例如 workshop.html 或 services.html）：", "workshop.html");
+      if (!name) return;
+      let cleanName = name.trim().replace(/[^a-zA-Z0-9_.-]/g, "-");
+      if (!cleanName.endsWith(".html")) cleanName += ".html";
+      if (cleanName === "studio.html") {
+        window.alert("studio.html 為系統保留檔名，請使用其他名稱。");
+        return;
+      }
+
+      const brandName = state.config?.brand?.name || "澄觀書齋";
+      const starterPage = `<!DOCTYPE html>
+<html lang="zh-Hant" data-theme="paper">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>專題頁面 · ${brandName}</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./theme.custom.css" />
+</head>
+<body>
+  <div class="site-shell">
+    <header class="site-header">
+      <div class="header-inner">
+        <a href="./" class="brand-mark">
+          <span class="brand-name">${brandName}</span>
+        </a>
+        <nav class="primary-nav">
+          <a href="./#/essays" class="nav-link">長文</a>
+          <a href="./#/notes" class="nav-link">筆記</a>
+          <a href="./#/letters" class="nav-link">電子報</a>
+          <a href="./" class="nav-link">返回首頁 →</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="site-main">
+      <header class="page-header">
+        <span class="section-kicker mono-label">CUSTOM HTML PAGE</span>
+        <h1 class="page-title serif">自訂獨立專題網頁</h1>
+        <p class="page-desc">這是一頁完全由你自由編排 HTML 結構的獨立頁面，已自動套用靜謐書齋字體與紙感設計系統。</p>
+      </header>
+
+      <div class="prose">
+        <aside class="callout-box">
+          <strong>直接編輯左側 HTML 原始碼</strong>
+          <p>你可以在此放入課程介紹、顧問服務方案、互動工具或任何自訂 HTML 版面。</p>
+        </aside>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
+`;
+
+      const res = await fetch("/api/studio/web-file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: cleanName, content: starterPage })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        state.webFiles = data.webFiles;
+        updateGitBadge(data.git);
+        await selectWebFile(cleanName);
+        setStatus(`✓ 已建立並開啟新網頁：${cleanName}`, "is-saved");
+      }
+    });
+
+    // 刪除自建 HTML 網頁
+    document.getElementById("delete-html-page-btn").addEventListener("click", async () => {
+      const p = state.currentWebFile.path;
+      if (state.currentWebFile.isCore) return;
+      if (!window.confirm(`確定要刪除獨立網頁「${p}」嗎？`)) return;
+
+      const res = await fetch(`/api/studio/web-file?path=${encodeURIComponent(p)}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.ok) {
+        state.webFiles = data.webFiles;
+        updateGitBadge(data.git);
+        await selectWebFile("index.html");
+        setStatus(`已刪除網頁 ${p}`, "is-saved");
+      }
+    });
+
+    // 預覽寬度切換（桌機 / 手機）
+    document.querySelectorAll("[data-viewport]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("[data-viewport]").forEach((b) => b.classList.toggle("is-active", b === btn));
+        document.getElementById("html-iframe-stage").classList.toggle("is-mobile", btn.dataset.viewport === "mobile");
+      });
+    });
+
+    document.getElementById("refresh-html-preview-btn").addEventListener("click", () => {
+      updateHtmlLiveIframe(state.currentWebFile.path, codeTa.value);
+    });
+  }
+
+  // =========================================================================
+  // Tab 3, 4, 5, 6: 門面、關於、視覺、電子報與同步
   // =========================================================================
   function populateConfigForms() {
     const c = state.config || {};
@@ -560,11 +944,30 @@
       markDirty();
     });
 
-    document.querySelectorAll("#tab-brand input, #tab-brand textarea, #tab-about input, #tab-about textarea, #tab-sync input, #tab-sync textarea, #tab-theme input").forEach(
-      (el) => {
+    document
+      .querySelectorAll(
+        "#tab-brand input, #tab-brand textarea, #tab-about input, #tab-about textarea, #tab-sync input:not(#git-remote-input), #tab-sync textarea, #tab-theme input"
+      )
+      .forEach((el) => {
         el.addEventListener("input", markDirty);
+      });
+
+    // 綁定 GitHub 遠端倉庫按鈕
+    document.getElementById("save-git-remote-btn").addEventListener("click", async () => {
+      const remoteUrl = document.getElementById("git-remote-input").value.trim();
+      const res = await fetch("/api/studio/git-remote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ remoteUrl })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        updateGitBadge(data.git);
+        setStatus("✓ 已更新 GitHub 遠端倉庫網址", "is-saved");
+      } else {
+        setStatus(data.message || "綁定失敗", "is-dirty");
       }
-    );
+    });
 
     // 雲端同步按鈕
     document.getElementById("run-cloud-sync-btn").addEventListener("click", async () => {
@@ -590,7 +993,7 @@
   }
 
   // =========================================================================
-  // 全域儲存動作 (⌘S / 點擊儲存變更)
+  // 全域儲存動作 (⌘S / 點擊儲存)
   // =========================================================================
   async function saveActiveWork() {
     const saveBtn = document.getElementById("global-save-btn");
@@ -599,7 +1002,17 @@
 
     try {
       if (state.activeTab === "content") {
-        // 擷取所有連動的 [[slug]] 自動寫入 links 欄位
+        if (state.editorMode === "wysiwyg") {
+          document.getElementById("doc-body").value = formatHtmlPretty(
+            document.getElementById("doc-wysiwyg").innerHTML
+          );
+          state.docFormat = "html";
+        } else if (state.editorMode === "html-source") {
+          state.docFormat = "html";
+        } else {
+          state.docFormat = "markdown";
+        }
+
         const body = document.getElementById("doc-body").value;
         const wikiSlugs = [...body.matchAll(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)].map((m) => m[1].trim());
         const docType = document.getElementById("doc-type").value;
@@ -608,6 +1021,7 @@
           title: document.getElementById("doc-title").value.trim() || "未命名文章",
           slug: document.getElementById("doc-slug").value.trim(),
           type: docType,
+          format: state.docFormat,
           date: document.getElementById("doc-date").value || todayStr(),
           tags: document.getElementById("doc-tags").value.trim(),
           links: [...new Set(wikiSlugs)].join(", "),
@@ -640,6 +1054,19 @@
         updateGitBadge(data.git);
         renderSidebarList();
         populateWikilinkPicker();
+      } else if (state.activeTab === "html") {
+        const content = document.getElementById("html-code-textarea").value;
+        const res = await fetch("/api/studio/web-file", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: state.currentWebFile.path, content })
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.message || "儲存 HTML 檔案失敗");
+        state.webFiles = data.webFiles;
+        updateGitBadge(data.git);
+        updateHtmlLiveIframe(state.currentWebFile.path, content);
+        reloadPreviewIframes();
       } else if (state.activeTab === "theme") {
         const theme = collectThemeFromForm();
         const res = await fetch("/api/studio/theme", {
@@ -687,7 +1114,6 @@
 
   function bindGlobalShortcuts() {
     document.getElementById("global-save-btn").addEventListener("click", saveActiveWork);
-
     window.addEventListener("keydown", (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
@@ -697,8 +1123,57 @@
   }
 
   // =========================================================================
-  // 輔助解析器（預覽窗格專用）
+  // Markdown ↔ HTML 轉換與預覽工具
   // =========================================================================
+  function handleTabIndent(e) {
+    if (e.key === "Tab") {
+      e.preventDefault();
+      insertAtCursor(e.target, "  ");
+      e.target.dispatchEvent(new Event("input"));
+    }
+  }
+
+  function insertAtCursor(textarea, snippet) {
+    const start = textarea.selectionStart || 0;
+    const end = textarea.selectionEnd || 0;
+    const val = textarea.value;
+    textarea.value = val.slice(0, start) + snippet + val.slice(end);
+    textarea.focus();
+    const pos = start + snippet.length;
+    textarea.setSelectionRange(pos, pos);
+  }
+
+  function formatHtmlPretty(html) {
+    return String(html || "")
+      .replace(/></g, ">\n<")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  function htmlToMarkdown(html) {
+    let s = String(html || "");
+    s = s.replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, "\n## $1\n\n");
+    s = s.replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, "\n### $1\n\n");
+    s = s.replace(/<strong[^>]*>([\s\S]*?)<\/strong>/gi, "**$1**");
+    s = s.replace(/<b[^>]*>([\s\S]*?)<\/b>/gi, "**$1**");
+    s = s.replace(/<em[^>]*>([\s\S]*?)<\/em>/gi, "*$1*");
+    s = s.replace(/<i[^>]*>([\s\S]*?)<\/i>/gi, "*$1*");
+    s = s.replace(/<blockquote[^>]*>\s*<p[^>]*>([\s\S]*?)<\/p>\s*<\/blockquote>/gi, "\n> $1\n\n");
+    s = s.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, "- $1\n");
+    s = s.replace(/<\/?(ul|ol)[^>]*>/gi, "\n");
+    s = s.replace(/<hr\s*\/?>/gi, "\n---\n");
+    s = s.replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, "$1\n\n");
+    s = s.replace(/<br\s*\/?>/gi, "\n");
+    s = s.replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+    return s.replace(/\n{3,}/g, "\n\n").trim() + "\n";
+  }
+
+  function renderWikilinksInHtml(html) {
+    return String(html || "").replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, slug, label) => {
+      return `<a href="#/notes/${encodeURIComponent(slug.trim())}" class="wikilink">${escapeHtml(label || slug)}</a>`;
+    });
+  }
+
   function simplePreviewMarkdown(md) {
     const lines = md.replace(/\r\n/g, "\n").split("\n");
     const out = [];
@@ -775,6 +1250,11 @@
       const t = line.trim();
       if (!t) {
         flushAll();
+        continue;
+      }
+      if (/^<\/?(div|section|aside|figure|figcaption|details|summary|table|thead|tbody|tr|td|th|iframe|blockquote|p|ul|ol|li|h[1-6]|hr|br)\b/i.test(t)) {
+        flushAll();
+        out.push(line);
         continue;
       }
       if (t.startsWith("|") && t.endsWith("|")) {

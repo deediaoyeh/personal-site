@@ -100,6 +100,7 @@ def build_manifest_and_rss():
                 "title": meta.get("title", slug),
                 "slug": slug,
                 "type": meta.get("type", doc_type),
+                "format": meta.get("format", "markdown"),
                 "date": meta.get("date", "2026-01-01"),
                 "readingTime": meta.get("readingTime") or estimate_reading_time(body),
                 "summary": meta.get("summary", ""),

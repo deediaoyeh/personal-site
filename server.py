@@ -151,6 +151,7 @@ def compose_markdown(meta: dict, body: str) -> str:
         "title",
         "slug",
         "type",
+        "format",
         "noteCode",
         "stage",
         "issue",
@@ -182,6 +183,20 @@ def rebuild_manifest():
 
 
 def get_git_status_summary():
+    remote_url = ""
+    try:
+        rem = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            cwd=str(ROOT_DIR),
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if rem.returncode == 0:
+            remote_url = rem.stdout.strip()
+    except Exception:
+        pass
+
     try:
         res = subprocess.run(
             ["git", "status", "--short"],
@@ -192,10 +207,61 @@ def get_git_status_summary():
         )
         if res.returncode == 0:
             lines = [l for l in res.stdout.splitlines() if l.strip()]
-            return {"initialized": True, "changedCount": len(lines), "files": lines[:20]}
+            return {
+                "initialized": True,
+                "changedCount": len(lines),
+                "files": lines[:20],
+                "remoteUrl": remote_url,
+            }
     except Exception:
         pass
-    return {"initialized": False, "changedCount": 0, "files": []}
+    return {"initialized": False, "changedCount": 0, "files": [], "remoteUrl": remote_url}
+
+
+PROTECTED_CORE_FILES = {"index.html", "styles.css", "theme.custom.css", "app.js"}
+EXCLUDED_STUDIO_FILES = {"studio.html", "studio.css", "studio.js"}
+
+
+def resolve_safe_web_path(rel_path: str) -> Path:
+    clean = rel_path.strip().lstrip("/")
+    if not clean or ".." in clean or clean in EXCLUDED_STUDIO_FILES:
+        raise ValueError("不允許存取此檔案路徑")
+    full = (ROOT_DIR / clean).resolve()
+    if ROOT_DIR != full and ROOT_DIR not in full.parents:
+        raise ValueError("路徑超出專案目錄範圍")
+    if full.suffix.lower() not in {".html", ".css", ".js"}:
+        raise ValueError("僅支援編輯 .html、.css 或 .js 網頁檔案")
+    return full
+
+
+def list_editable_web_files() -> list:
+    items = []
+    # 核心模板與樣式優先排列
+    core_order = [
+        ("index.html", "網站主骨架 HTML"),
+        ("styles.css", "靜謐書齋主樣式 CSS"),
+        ("theme.custom.css", "視覺微調覆寫 CSS"),
+    ]
+    seen = set()
+    for fname, label in core_order:
+        fpath = ROOT_DIR / fname
+        if fpath.exists():
+            items.append({"path": fname, "label": label, "isCore": True})
+            seen.add(fname)
+
+    # 掃描根目錄與 pages/ 下的所有自建 .html 檔案
+    for p in sorted(ROOT_DIR.glob("*.html")):
+        if p.name not in seen and p.name not in EXCLUDED_STUDIO_FILES:
+            items.append({"path": p.name, "label": "獨立 HTML 頁面", "isCore": False})
+            seen.add(p.name)
+
+    pages_dir = ROOT_DIR / "pages"
+    if pages_dir.exists():
+        for p in sorted(pages_dir.glob("*.html")):
+            rel = f"pages/{p.name}"
+            items.append({"path": rel, "label": "獨立 HTML 子頁", "isCore": False})
+
+    return items
 
 
 class StudioHandler(SimpleHTTPRequestHandler):
@@ -234,9 +300,34 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     "config": read_site_config(),
                     "theme": read_theme_config(),
                     "manifest": manifest,
+                    "webFiles": list_editable_web_files(),
                     "git": get_git_status_summary(),
                 }
             )
+            return
+
+        if parsed.path == "/api/studio/web-files":
+            self._send_json({"ok": True, "webFiles": list_editable_web_files()})
+            return
+
+        if parsed.path == "/api/studio/web-file":
+            qs = parse_qs(parsed.query)
+            rel_path = (qs.get("path") or [""])[0]
+            try:
+                target = resolve_safe_web_path(rel_path)
+                if not target.exists():
+                    self._send_json({"ok": False, "message": "找不到指定網頁檔"}, HTTPStatus.NOT_FOUND)
+                    return
+                self._send_json(
+                    {
+                        "ok": True,
+                        "path": rel_path,
+                        "content": target.read_text(encoding="utf-8"),
+                        "isCore": rel_path in PROTECTED_CORE_FILES,
+                    }
+                )
+            except ValueError as exc:
+                self._send_json({"ok": False, "message": str(exc)}, HTTPStatus.BAD_REQUEST)
             return
 
         if parsed.path == "/api/studio/item":
@@ -317,6 +408,35 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 )
                 return
 
+            if parsed.path == "/api/studio/web-file":
+                rel_path = data.get("path", "").strip()
+                content = data.get("content", "")
+                target = resolve_safe_web_path(rel_path)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(content, encoding="utf-8")
+                self._send_json(
+                    {
+                        "ok": True,
+                        "path": rel_path,
+                        "webFiles": list_editable_web_files(),
+                        "git": get_git_status_summary(),
+                    }
+                )
+                return
+
+            if parsed.path == "/api/studio/git-remote":
+                remote_url = data.get("remoteUrl", "").strip()
+                if not remote_url:
+                    self._send_json({"ok": False, "message": "請輸入有效的 GitHub 倉庫網址"}, HTTPStatus.BAD_REQUEST)
+                    return
+                check = subprocess.run(["git", "remote", "get-url", "origin"], cwd=str(ROOT_DIR), capture_output=True)
+                if check.returncode == 0:
+                    subprocess.run(["git", "remote", "set-url", "origin", remote_url], cwd=str(ROOT_DIR), check=True)
+                else:
+                    subprocess.run(["git", "remote", "add", "origin", remote_url], cwd=str(ROOT_DIR), check=True)
+                self._send_json({"ok": True, "git": get_git_status_summary()})
+                return
+
             if parsed.path == "/api/studio/sync":
                 sync_script = ROOT_DIR / "scripts" / "sync_cloud.py"
                 res = subprocess.run(
@@ -353,6 +473,27 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     rebuild_manifest()
             manifest = json.loads((CONTENT_DIR / "manifest.json").read_text(encoding="utf-8"))
             self._send_json({"ok": True, "manifest": manifest, "git": get_git_status_summary()})
+            return
+
+        if parsed.path == "/api/studio/web-file":
+            qs = parse_qs(parsed.query)
+            rel_path = (qs.get("path") or [""])[0]
+            if rel_path in PROTECTED_CORE_FILES:
+                self._send_json({"ok": False, "message": "系統核心檔案不可刪除"}, HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                target = resolve_safe_web_path(rel_path)
+                if target.exists():
+                    target.unlink()
+                self._send_json(
+                    {
+                        "ok": True,
+                        "webFiles": list_editable_web_files(),
+                        "git": get_git_status_summary(),
+                    }
+                )
+            except ValueError as exc:
+                self._send_json({"ok": False, "message": str(exc)}, HTTPStatus.BAD_REQUEST)
             return
         self._send_json({"ok": False, "message": "未知的 API 路徑"}, HTTPStatus.NOT_FOUND)
 
