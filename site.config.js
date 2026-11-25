@@ -31,7 +31,7 @@ window.SITE_CONFIG = {
     "promise": "每次一封，包含一篇核心長文導讀、三則近期讀書卡片與一個值得反覆推敲的問題。不發廣告，隨時可一鍵退訂。",
     "inputPlaceholder": "輸入你的常用 Email 信箱",
     "buttonText": "訂閱電子報",
-    "googleScriptUrl": ""
+    "googleScriptUrl": "https://script.google.com/macros/s/AKfycbwqcOL2pWm9SN0eZB3w8hmg4tKJq929q-6cH4TcwhRppWOWREZYyXmex1FpaZFdiwWS/exec"
   },
   "about": {
     "headline": "每年，我都想找些不同的議題來研究",
