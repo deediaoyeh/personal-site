@@ -18,7 +18,7 @@
 | **Drive 電子報子資料夾** | `letters` (`1dDJ53xY7N7bCSNSkRLHub82WJ7d9kqPQ`) | 已上傳初始 2 期電子報 `.md` |
 | **GitHub 程式碼倉庫** | `https://github.com/deediaoyeh/personal-site` | **已建立公開倉庫並完成推送**（帳號：`deediaoyeh`） |
 | **GitHub Pages 正式主站** | `https://deediaoyeh.github.io/personal-site/` | **已正式部署上線**（Actions Run ID: `45519119950`） |
-| **Netlify 備份站專案** | `deediao-studio` (Site ID: `eb87f73c-c435-4e6a-82b5-1e649fa2543b`) | **已正式部署上線**（`https://deediao-studio.netlify.app`，Deploy ID: `6b0629bdbf91524657ad0454`） |
+| **Netlify 備份站專案** | `deediao-studio` (Site ID: `eb87f73c-c435-4e6a-82b5-1e649fa2543b`) | **已綁定 GitHub 全自動持續部署**（`https://deediao-studio.netlify.app`） |
 
 ---
 
@@ -108,6 +108,10 @@
 7. **修復雲端同步沙盒權限與同步首篇真實筆記《這次我把AI當作SA來協作》（2026-11-25 08:47）**：
    - 修正 `server.py` 與 `scripts/sync_cloud.py` 的 `.gitconfig` 環境讀取機制，並以完整本機網路權限啟動 `server.py`，使編輯工作台內點擊「立即執行雲端同步」可直接存取 GitHub 與雲端服務。
    - 升級段落單行換行渲染（自動轉為 `<br />`），忠實呈現逐行書寫節奏；並將首篇筆記 `note-20261125-1.md` 同步發佈至 GitHub Pages 主站、Netlify 備份站與 Google Drive。
+8. **消除雙站 CDN 快取延遲並綁定 GitHub ↔ Netlify 全自動持續部署（2026-11-25 09:05–09:21）**：
+   - 於 `app.js` 實作 `refreshLatestSiteConfig()` 無快取動態載入（`cache: "no-store"`），徹底消除 GitHub Pages 10 分鐘快取延遲；升級 `studio.js` 跨分頁全量儲存（`dirtyScopes`），修改任何分頁按一次 `⌘S` 即全數存檔。
+   - 透過 `netlify-cli` 與 `gh` 自動完成 `deediao-studio` 綁定 `deediaoyeh/personal-site`（Deploy Key + GitHub Push Webhook + `NETLIFY_BUILD_HOOK_URL` 寫入 GitHub Secrets 與 `.sync.env`），實現主站一更新、Netlify 備份站全自動跟隨部署。
+
 
 
 
