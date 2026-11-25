@@ -751,7 +751,7 @@
         return;
       }
 
-      const brandName = state.config?.brand?.name || "澄觀書齋";
+      const brandName = state.config?.brand?.name || "低調走過";
       const starterPage = `<!DOCTYPE html>
 <html lang="zh-Hant" data-theme="paper">
 <head>

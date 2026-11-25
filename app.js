@@ -1,5 +1,5 @@
 /**
- * 澄觀書齋 — 靜謐書齋風個人知識庫與電子報前端引擎 (零外部框架依賴)
+ * 低調走過 (Deediao) — 靜謐書齋風個人知識庫與電子報前端引擎 (零外部框架依賴)
  * 支援：Hash 路由、內建 Markdown + Wiki-links 雙向連結解析、文章目錄生成、全站搜尋、Google Apps Script 電子報訂閱。
  */
 (function () {
@@ -172,6 +172,10 @@
 
   async function init() {
     applyTheme(state.theme);
+    // 先以現有 SITE_CONFIG 零延遲渲染導覽列品牌與頁尾，避免網路請求期間閃現預設字樣
+    if (CONFIG && CONFIG.brand) {
+      renderShellChrome();
+    }
 
     // 公開雲端站點（GitHub Pages / Netlify）優先從準即時端點拉取最新 Commit 資料（~1 秒反映，無須等建置與 CDN 快取）
     const liveSnap = await fetchLiveDataSnapshot();

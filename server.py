@@ -322,6 +322,7 @@ def write_site_config(data: dict):
         f"window.SITE_CONFIG = {formatted};\n"
     )
     CONFIG_JS_PATH.write_text(content, encoding="utf-8")
+    rebuild_manifest()
 
 
 def read_theme_config() -> dict:

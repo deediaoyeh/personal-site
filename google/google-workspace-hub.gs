@@ -65,7 +65,7 @@ function setupSheets() {
     draftSheet.appendRow([
       "03",
       "《靜水深流》第 03 期：在資訊洪流中建立自己的判斷基準",
-      "週日早安，\n\n這是來自 Google Workspace 發信台的範例草稿。\n\n祝安好，\n澄觀",
+      "週日早安，\n\n這是來自 Google Workspace 發信台的範例草稿。\n\n祝安好，\nDeediao",
       "draft",
       ""
     ]);

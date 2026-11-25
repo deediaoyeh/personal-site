@@ -137,7 +137,9 @@ def build_manifest_and_rss():
 
     # 讀取 site.config.js 的最新品牌名稱與簡介，同步更新 RSS 與 index.html 快取版本號
     studio_title = "個人知識庫與電子報"
-    studio_desc = "在資訊過載的時代，慢下來拆解複雜問題、累積可複用的思維模型。"
+    studio_desc = "這裡是一座持續生長的個人知識庫。"
+    brand_name = "低調走過"
+    brand_latin = "Deediao"
     cfg_path = ROOT_DIR / "site.config.js"
     if cfg_path.exists():
         raw_cfg = cfg_path.read_text(encoding="utf-8")
@@ -145,17 +147,35 @@ def build_manifest_and_rss():
         if m_cfg:
             try:
                 cfg_obj = json.loads(m_cfg.group(1))
-                studio_title = cfg_obj.get("brand", {}).get("studioTitle", studio_title)
-                studio_desc = cfg_obj.get("brand", {}).get("tagline", studio_desc)
+                brand_obj = cfg_obj.get("brand", {})
+                studio_title = brand_obj.get("studioTitle", studio_title)
+                studio_desc = brand_obj.get("tagline", studio_desc)
+                brand_name = brand_obj.get("name", brand_name)
+                brand_latin = brand_obj.get("latinName", brand_latin)
             except Exception:
                 pass
 
-    # 為 index.html 內的靜態設定與樣式加上版本查詢參數，徹底杜絕瀏覽器舊快取
+    # 同步更新 index.html 內的靜態品牌文字、描述與快取版本參數，避免首屏載入閃現舊名稱
     index_path = ROOT_DIR / "index.html"
     if index_path.exists():
         ver = datetime.utcnow().strftime("%Y%m%d%H%M%S")
         idx_html = index_path.read_text(encoding="utf-8")
         idx_html = re.sub(r"<title>.*?</title>", f"<title>{escape(studio_title)}</title>", idx_html)
+        idx_html = re.sub(
+            r'(<meta\s+name="description"\s+content=")[^"]*(")',
+            rf"\g<1>{escape(studio_desc)}\2",
+            idx_html,
+        )
+        idx_html = re.sub(
+            r'(<span[^>]*id="brand-name"[^>]*>).*?(</span>)',
+            rf"\g<1>{escape(brand_name)}\2",
+            idx_html,
+        )
+        idx_html = re.sub(
+            r'(<span[^>]*id="brand-latin"[^>]*>).*?(</span>)',
+            rf"\g<1>{escape(brand_latin)}\2",
+            idx_html,
+        )
         idx_html = re.sub(r'(\./(?:site\.config\.js|theme\.custom\.css|styles\.css|app\.js))(?:\?v=[^"\']+)?', rf"\1?v={ver}", idx_html)
         index_path.write_text(idx_html, encoding="utf-8")
 
