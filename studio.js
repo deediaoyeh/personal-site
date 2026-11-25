@@ -265,6 +265,67 @@
             `<option value="[[${escapeAttr(i.slug)}|${escapeAttr(i.title)}]]">${escapeHtml(i.title)} (${i.slug})</option>`
         )
         .join("");
+    renderTagSuggestions();
+  }
+
+  function parseTagList(raw) {
+    return String(raw || "")
+      .split(/[,，、]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  function renderTagSuggestions() {
+    const bar = document.getElementById("tag-suggestions-bar");
+    const input = document.getElementById("doc-tags");
+    if (!bar || !input) return;
+
+    const currentTags = parseTagList(input.value);
+    const currentSet = new Set(currentTags);
+
+    // 統計全站所有文章、筆記、電子報「曾經用過的標籤」並依使用次數排序
+    const freq = new Map();
+    (state.manifest?.items || []).forEach((it) => {
+      (it.tags || []).forEach((rawT) => {
+        const t = String(rawT || "").trim();
+        if (t) freq.set(t, (freq.get(t) || 0) + 1);
+      });
+    });
+
+    const allUsedTags = [...freq.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh-Hant"))
+      .map(([tag]) => tag);
+
+    if (allUsedTags.length === 0) {
+      bar.innerHTML = "";
+      return;
+    }
+
+    bar.innerHTML = allUsedTags
+      .map((tag) => {
+        const picked = currentSet.has(tag);
+        return `<button type="button" class="tag-pick-chip ${picked ? "is-picked" : ""}" data-pick-tag="${escapeAttr(
+          tag
+        )}" title="點擊${picked ? "移除" : "加入"}此標籤">${picked ? "✓ " : "＋ "}#${escapeHtml(tag)}</button>`;
+      })
+      .join("");
+
+    bar.querySelectorAll("[data-pick-tag]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tag = btn.dataset.pickTag;
+        const list = parseTagList(input.value);
+        const idx = list.indexOf(tag);
+        if (idx >= 0) {
+          list.splice(idx, 1);
+        } else {
+          list.push(tag);
+        }
+        input.value = list.join(", ");
+        renderTagSuggestions();
+        markDirty("content");
+        renderLiveContentPreview();
+      });
+    });
   }
 
   async function selectDoc(type, slug) {
@@ -291,6 +352,7 @@
     applyEditorModeUI(state.docFormat === "html" ? "wysiwyg" : "markdown", false);
     toggleTypeSpecificFields(meta.type || type);
     renderSidebarList();
+    renderTagSuggestions();
     renderLiveContentPreview();
     state.dirty = false;
     setStatus(`正在編輯：${meta.title || slug}`);
@@ -334,6 +396,7 @@
 
     toggleTypeSpecificFields(docType);
     renderSidebarList();
+    renderTagSuggestions();
     renderLiveContentPreview();
     document.getElementById("doc-title").focus();
     setStatus("已建立新草稿 — 輸入標題並按 ⌘S 即可寫入網站", "is-dirty");
@@ -471,6 +534,8 @@
         renderLiveContentPreview();
       });
     });
+
+    document.getElementById("doc-tags").addEventListener("input", renderTagSuggestions);
 
     // 支援 doc-body 在 HTML 原始碼模式下按 Tab 縮排
     document.getElementById("doc-body").addEventListener("keydown", handleTabIndent);
@@ -1295,7 +1360,7 @@
           type: docType,
           format: state.docFormat,
           date: document.getElementById("doc-date").value || todayStr(),
-          tags: document.getElementById("doc-tags").value.trim(),
+          tags: parseTagList(document.getElementById("doc-tags").value).join(", "),
           links: [...new Set(wikiSlugs)].join(", "),
           summary: document.getElementById("doc-summary").value.trim()
         };
@@ -1606,6 +1671,10 @@
     });
     s = s.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, slug, label) => {
       return `<a href="#/notes/${encodeURIComponent(slug.trim())}" class="wikilink">${label || slug}</a>`;
+    });
+    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
+      const ext = url.startsWith("http") ? ' target="_blank" rel="noopener noreferrer"' : "";
+      return `<a href="${url}"${ext}>${label}</a>`;
     });
     return s;
   }

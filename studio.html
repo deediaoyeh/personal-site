@@ -89,10 +89,11 @@
               <input type="date" id="doc-date" class="studio-field-input mono-label" />
             </label>
 
-            <label class="field-block">
-              <span class="field-label">主題標籤（逗號分隔）</span>
-              <input type="text" id="doc-tags" class="studio-field-input" placeholder="思維模型, 寫作方法" />
-            </label>
+            <div class="field-block">
+              <label for="doc-tags" class="field-label">主題標籤（支援逗號、頓號分隔，或點選下方快選標籤）</label>
+              <input type="text" id="doc-tags" class="studio-field-input" placeholder="例如：自主學習, 思維模型, AI協作" />
+              <div id="tag-suggestions-bar" class="tag-suggestions-bar" aria-label="常用與既有標籤快選"></div>
+            </div>
 
             <!-- 筆記專用欄位 -->
             <label class="field-block" id="wrap-note-stage" hidden>

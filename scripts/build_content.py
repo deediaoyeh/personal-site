@@ -95,8 +95,8 @@ def build_manifest_and_rss():
             raw = md_path.read_text(encoding="utf-8")
             meta, body = parse_frontmatter(raw)
             slug = meta.get("slug") or md_path.stem
-            tags = [t.strip() for t in meta.get("tags", "").split(",") if t.strip()]
-            links = [l.strip() for l in meta.get("links", "").split(",") if l.strip()]
+            tags = [t.strip() for t in re.split(r"[,，、]+", meta.get("tags", "")) if t.strip()]
+            links = [l.strip() for l in re.split(r"[,，、]+", meta.get("links", "")) if l.strip()]
 
             entry = {
                 "title": meta.get("title", slug),

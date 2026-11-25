@@ -1055,3 +1055,39 @@ html.cloud-auth-locked .studio-workspace {
   border-bottom: 1px solid var(--ink-muted, #857f73);
   text-decoration: none;
 }
+
+
+/* =========================================================================
+   主題標籤智慧快選膠囊列 (#tag-suggestions-bar)
+   ========================================================================= */
+.tag-suggestions-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.tag-pick-chip {
+  appearance: none;
+  padding: 2px 9px;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  border-radius: 2px;
+  border: 1px solid rgba(29, 28, 25, 0.2);
+  background: var(--bg-paper, #f5f2eb);
+  color: var(--ink-secondary, #534f46);
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.12s ease;
+}
+
+.tag-pick-chip:hover {
+  border-color: var(--accent, #6e5039);
+  color: var(--ink-primary, #1d1c19);
+}
+
+.tag-pick-chip.is-picked {
+  background: var(--ink-primary, #1d1c19);
+  border-color: var(--ink-primary, #1d1c19);
+  color: var(--bg-paper, #f5f2eb);
+}

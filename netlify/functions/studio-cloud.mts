@@ -383,8 +383,8 @@ async function buildUpdatedManifest(
         date: meta.date || new Date().toISOString().slice(0, 10),
         readingTime: meta.readingTime || `${Math.max(1, Math.round(cleanChars / 380))} min`,
         summary: meta.summary || "",
-        tags: (meta.tags || "").split(",").map((s) => s.trim()).filter(Boolean),
-        links: (meta.links || "").split(",").map((s) => s.trim()).filter(Boolean),
+        tags: (meta.tags || "").split(/[,，、]+/).map((s) => s.trim()).filter(Boolean),
+        links: (meta.links || "").split(/[,，、]+/).map((s) => s.trim()).filter(Boolean),
         path: `./${fullRel}`,
       };
       if (meta.stage) entry.stage = meta.stage;

@@ -1,7 +1,31 @@
 {
-  "updatedAt": "2026-11-25T23:37:27Z",
-  "count": 6,
+  "updatedAt": "2026-11-25T23:43:15Z",
+  "count": 7,
   "items": [
+    {
+      "title": "《低調走過》雙週電子報 № 01：自主學習的起點——給學生嘗試的安全感與 AI 資料庫引導",
+      "slug": "letter-20261126-1",
+      "type": "letter",
+      "format": "markdown",
+      "date": "2026-11-26",
+      "readingTime": "2 min",
+      "summary": "創刊號整理近期兩場自主學習共備工作坊的核心觀察、Gemini Notebook 群科與學習歷程資料庫實戰，以及把 AI 當作系統分析師 (SA) 協作的思考。",
+      "tags": [
+        "雙週電子報",
+        "自主學習",
+        "AI協作",
+        "銀齡"
+      ],
+      "links": [
+        "essay-20261125-2",
+        "essay-20261125-1",
+        "note-20261125-4",
+        "note-20261125-1",
+        "note-20261125-3"
+      ],
+      "path": "./content/letters/letter-20261126-1.md",
+      "issue": 1
+    },
     {
       "title": "持續不斷引導與思考",
       "slug": "essay-20261125-1",

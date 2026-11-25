@@ -450,9 +450,14 @@
       { key: "budding", label: "整理中 Budding" },
       { key: "seedling", label: "萌芽 Seedling" }
     ];
+    const allNoteTags = ["全部", ...new Set(notes.flatMap((n) => n.tags || []))];
+    if (!allNoteTags.includes(state.noteTag)) {
+      state.noteTag = "全部";
+    }
 
     const filtered = notes.filter((n) => {
       if (state.noteStage !== "全部" && n.stage !== state.noteStage) return false;
+      if (state.noteTag !== "全部" && !(n.tags || []).includes(state.noteTag)) return false;
       return true;
     });
 
@@ -460,10 +465,10 @@
       <header class="page-header">
         <span class="section-kicker mono-label">NOTES · 數位花園與知識卡片</span>
         <h1 class="page-title">知識筆記</h1>
-        <p class="page-desc">這裡存放讀書摘錄、方法備忘與尚未寫成長文的思考碎片。筆記依成熟度分為「萌芽」、「整理中」與「常青」，並透過雙向連結與長文彼此串聯。</p>
+        <p class="page-desc">這裡存放讀書摘錄、方法備忘與尚未寫成長文的思考碎片。筆記依成熟度分為「萌芽」、「整理中」與「常青」，並可依主題標籤交叉檢索。</p>
       </header>
 
-      <div class="filter-bar" aria-label="筆記成熟度篩選">
+      <div class="filter-bar" aria-label="筆記成熟度篩選" style="margin-bottom: 10px;">
         ${stages
           .map(
             (s) => `
@@ -475,14 +480,43 @@
           .join("")}
       </div>
 
+      ${
+        allNoteTags.length > 1
+          ? `
+        <div class="filter-bar" aria-label="筆記主題標籤篩選">
+          ${allNoteTags
+            .map(
+              (tag) => `
+            <button type="button" class="filter-chip ${state.noteTag === tag ? "is-active" : ""}" data-note-tag="${escapeHtml(tag)}">
+              ${tag === "全部" ? "全部標籤" : "#" + escapeHtml(tag)}
+            </button>
+          `
+            )
+            .join("")}
+        </div>
+      `
+          : ""
+      }
+
       <div class="notes-grid">
-        ${filtered.map(renderNoteCardHtml).join("")}
+        ${
+          filtered.length > 0
+            ? filtered.map(renderNoteCardHtml).join("")
+            : `<p style="color:var(--ink-muted); padding:20px 0;">此篩選條件下尚無對應筆記。</p>`
+        }
       </div>
     `;
 
     container.querySelectorAll("[data-note-stage]").forEach((btn) => {
       btn.addEventListener("click", () => {
         state.noteStage = btn.dataset.noteStage;
+        renderNotesList(container);
+      });
+    });
+
+    container.querySelectorAll("[data-note-tag]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        state.noteTag = btn.dataset.noteTag;
         renderNotesList(container);
       });
     });
@@ -562,81 +596,110 @@
   // 關於與近況頁 (About & Now)
   // =========================================================================
   function renderAbout(container) {
-    const about = CONFIG.about;
+    const about = CONFIG.about || {};
+    const paragraphs = about.paragraphs || [];
+    const principles = about.principles || [];
+    const nowItems = about.nowItems || [];
+    const workAndProjects = about.workAndProjects || [];
+
     container.innerHTML = `
       <header class="page-header">
         <span class="section-kicker mono-label">ABOUT & NOW · 關於書齋主人</span>
-        <h1 class="page-title">${escapeHtml(about.headline)}</h1>
+        <h1 class="page-title">${escapeHtml(about.headline || "")}</h1>
         <p class="page-desc">${escapeHtml(CONFIG.brand.name)} — ${escapeHtml(CONFIG.brand.role)}</p>
       </header>
 
-      <div class="prose about-prose">
-        ${about.paragraphs.map((p) => `<p>${escapeHtml(p)}</p>`).join("")}
-      </div>
+      ${
+        paragraphs.length > 0
+          ? `
+        <div class="prose about-prose">
+          ${paragraphs.map((p) => `<p>${escapeHtml(p)}</p>`).join("")}
+        </div>
+      `
+          : ""
+      }
 
-      <section>
-        <span class="section-kicker mono-label">PRINCIPLES · 寫作與研究準則</span>
-        <div class="principles-grid">
-          ${about.principles
-            .map(
-              (p) => `
-            <div class="principle-item">
-              <h3>${escapeHtml(p.title)}</h3>
-              <p>${escapeHtml(p.desc)}</p>
-            </div>
-          `
-            )
-            .join("")}
-        </div>
-      </section>
-
-      <section style="margin-bottom: 56px;">
-        <div class="section-header-row">
-          <div>
-            <span class="section-kicker mono-label">NOW · 近況更新（${escapeHtml(about.nowUpdated)}）</span>
-            <h2 class="section-heading">最近正在專注的事</h2>
-          </div>
-        </div>
-        <div class="now-list">
-          ${about.nowItems
-            .map(
-              (n) => `
-            <div class="now-row">
-              <span class="now-label">${escapeHtml(n.label)}</span>
-              <div>${escapeHtml(n.text)}</div>
-            </div>
-          `
-            )
-            .join("")}
-        </div>
-      </section>
-
-      <section style="margin-bottom: 56px;">
-        <div class="section-header-row">
-          <div>
-            <span class="section-kicker mono-label">SELECTED WORK & ADVISORY</span>
-            <h2 class="section-heading">代表計畫與合作項目</h2>
-          </div>
-        </div>
-        <div class="work-list">
-          ${about.workAndProjects
-            .map(
-              (w) => `
-            <div class="work-row">
-              <span class="meta-date">${escapeHtml(w.year)}</span>
-              <div>
-                <h3 style="margin:0 0 4px; font-size:1.08rem; font-weight:500;">
-                  <a href="${escapeHtml(w.link)}" style="border-bottom:1px solid var(--rule-strong);">${escapeHtml(w.title)}</a>
-                  <span style="font-size:0.82rem; color:var(--ink-muted); font-family:Inter,sans-serif; margin-left:8px;">${escapeHtml(w.role)}</span>
-                </h3>
-                <p style="margin:0; font-size:0.92rem; color:var(--ink-secondary);">${escapeHtml(w.desc)}</p>
+      ${
+        principles.length > 0
+          ? `
+        <section>
+          <span class="section-kicker mono-label">PRINCIPLES · 寫作與研究準則</span>
+          <div class="principles-grid">
+            ${principles
+              .map(
+                (p) => `
+              <div class="principle-item">
+                <h3>${escapeHtml(p.title)}</h3>
+                <p>${escapeHtml(p.desc)}</p>
               </div>
+            `
+              )
+              .join("")}
+          </div>
+        </section>
+      `
+          : ""
+      }
+
+      ${
+        nowItems.length > 0
+          ? `
+        <section style="margin-bottom: 56px;">
+          <div class="section-header-row">
+            <div>
+              <span class="section-kicker mono-label">NOW · 近況更新（${escapeHtml(about.nowUpdated || "")}）</span>
+              <h2 class="section-heading">最近正在專注的事</h2>
             </div>
-          `
-            )
-            .join("")}
-        </div>
-      </section>
+          </div>
+          <div class="now-list">
+            ${nowItems
+              .map(
+                (n) => `
+              <div class="now-row">
+                <span class="now-label">${escapeHtml(n.label)}</span>
+                <div>${escapeHtml(n.text)}</div>
+              </div>
+            `
+              )
+              .join("")}
+          </div>
+        </section>
+      `
+          : ""
+      }
+
+      ${
+        workAndProjects.length > 0
+          ? `
+        <section style="margin-bottom: 56px;">
+          <div class="section-header-row">
+            <div>
+              <span class="section-kicker mono-label">SELECTED WORK & ADVISORY</span>
+              <h2 class="section-heading">代表計畫與合作項目</h2>
+            </div>
+          </div>
+          <div class="work-list">
+            ${workAndProjects
+              .map(
+                (w) => `
+              <div class="work-row">
+                <span class="meta-date">${escapeHtml(w.year)}</span>
+                <div>
+                  <h3 style="margin:0 0 4px; font-size:1.08rem; font-weight:500;">
+                    <a href="${escapeHtml(w.link)}" style="border-bottom:1px solid var(--rule-strong);">${escapeHtml(w.title)}</a>
+                    <span style="font-size:0.82rem; color:var(--ink-muted); font-family:Inter,sans-serif; margin-left:8px;">${escapeHtml(w.role)}</span>
+                  </h3>
+                  <p style="margin:0; font-size:0.92rem; color:var(--ink-secondary);">${escapeHtml(w.desc)}</p>
+                </div>
+              </div>
+            `
+              )
+              .join("")}
+          </div>
+        </section>
+      `
+          : ""
+      }
 
       ${renderNewsletterBoxHtml("about")}
     `;
@@ -695,6 +758,20 @@
             </div>
             <h1 class="article-title">${escapeHtml(item.title)}</h1>
             ${item.summary ? `<p class="article-subtitle">${escapeHtml(item.summary)}</p>` : ""}
+            ${
+              (item.tags || []).length > 0
+                ? `<div class="tag-list-inline" style="margin-top:14px;">
+                    ${(item.tags || [])
+                      .map(
+                        (t) =>
+                          `<button type="button" class="filter-chip" style="padding:3px 10px; font-size:0.78rem;" data-jump-tag="${escapeHtml(
+                            t
+                          )}" data-jump-type="${escapeHtml(type)}">#${escapeHtml(t)}</button>`
+                      )
+                      .join("")}
+                  </div>`
+                : ""
+            }
           </header>
 
           <div class="prose" id="article-prose">
@@ -761,6 +838,22 @@
         const target = document.getElementById(link.dataset.tocTarget);
         if (target) {
           target.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      });
+    });
+
+    // 點擊文章頂部主題標籤 → 直接跳轉至該分類並套用標籤篩選
+    container.querySelectorAll("[data-jump-tag]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tag = btn.dataset.jumpTag;
+        const jType = btn.dataset.jumpType;
+        if (jType === "essay") {
+          state.essayTag = tag;
+          window.location.hash = "#/essays";
+        } else {
+          state.noteStage = "全部";
+          state.noteTag = tag;
+          window.location.hash = "#/notes";
         }
       });
     });
@@ -969,6 +1062,25 @@
     };
   }
 
+  function stripMarkdownSyntax(raw) {
+    return String(raw || "")
+      .replace(/<[^>]+>/g, "")
+      .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, slug, label) => {
+        if (label) return label.trim();
+        const found = state.manifest ? state.manifest.items.find((i) => i.slug === slug.trim()) : null;
+        return found ? found.title : slug.trim();
+      })
+      .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      .replace(/\*\*([\s\S]+?)\*\*/g, "$1")
+      .replace(/__([\s\S]+?)__/g, "$1")
+      .replace(/~~([\s\S]+?)~~/g, "$1")
+      .replace(/\*([^*]+)\*/g, "$1")
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/^\*+|\*+$/g, "")
+      .trim();
+  }
+
   function parseHtmlContent(rawHtml) {
     const headings = [];
     // 若 HTML 段落中單獨放了一行純文字 YouTube 網址，自動轉為縮圖與內嵌播放器
@@ -993,7 +1105,7 @@
 
     // 為 HTML 內的 h2 / h3 自動補上目錄錨點 ID
     processed = processed.replace(/<h([23])([^>]*)>([\s\S]*?)<\/h\1>/gi, (full, lvl, attrs, inner) => {
-      const plainText = inner.replace(/<[^>]+>/g, "").trim();
+      const plainText = stripMarkdownSyntax(inner);
       const idMatch = attrs.match(/\bid=["']([^"']+)["']/i);
       const id =
         idMatch ? idMatch[1] : "sec-" + headings.length + "-" + plainText.toLowerCase().replace(/[^\w\u4e00-\u9fa5]+/g, "-");
@@ -1136,8 +1248,9 @@
         const rawLevel = hMatch[1].length;
         const level = rawLevel === 1 ? 2 : rawLevel;
         const text = hMatch[2].trim();
-        const id = "sec-" + headings.length + "-" + text.toLowerCase().replace(/[^\w\u4e00-\u9fa5]+/g, "-");
-        headings.push({ id, level, text });
+        const cleanHeading = stripMarkdownSyntax(text);
+        const id = "sec-" + headings.length + "-" + cleanHeading.toLowerCase().replace(/[^\w\u4e00-\u9fa5]+/g, "-");
+        headings.push({ id, level, text: cleanHeading });
         out.push(`<h${level} id="${escapeHtml(id)}">${renderInline(text)}</h${level}>`);
         continue;
       }
