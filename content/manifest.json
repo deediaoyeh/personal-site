@@ -1,7 +1,22 @@
 {
-  "updatedAt": "2026-11-25T03:48:23Z",
-  "count": 3,
+  "updatedAt": "2026-11-25T03:58:32Z",
+  "count": 4,
   "items": [
+    {
+      "title": "持續不斷引導與思考",
+      "slug": "essay-20261125-1",
+      "type": "essay",
+      "format": "markdown",
+      "date": "2026-11-25",
+      "readingTime": "2 min",
+      "summary": "在工作坊中怎麼引導老師做自主學習",
+      "tags": [
+        "自主學習",
+        "思維模型"
+      ],
+      "links": [],
+      "path": "./content/essays/essay-20261125-1.md"
+    },
     {
       "title": "這次我把AI當作SA來協作",
       "slug": "note-20261125-1",
