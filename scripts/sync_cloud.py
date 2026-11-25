@@ -4,11 +4,13 @@
 sync_cloud.py — 連網時一鍵將離線編輯成果同步至 Google Workspace (Drive) + GitHub 主站 + Netlify 備份站
 """
 
+import fcntl
 import json
 import os
 import shutil
 import subprocess
 import sys
+import time
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -137,6 +139,35 @@ def sync_to_gdrive_cli(logs: list):
 
 def sync_git_and_netlify(logs: list):
     env = build_git_env()
+
+    # 使用互斥鎖防止短時間內多次快速存檔／手動同步同時呼叫 git 造成 .git/index.lock 衝突
+    lock_file = ROOT_DIR / ".git" / ".studio-sync.lock"
+    lock_fh = None
+    if lock_file.parent.exists():
+        lock_fh = open(lock_file, "w", encoding="utf-8")
+        fcntl.flock(lock_fh.fileno(), fcntl.LOCK_EX)
+
+    try:
+        # 若有超過 30 秒的殘留 .git/index.lock，自動清理避免永久卡死
+        idx_lock = ROOT_DIR / ".git" / "index.lock"
+        if idx_lock.exists():
+            try:
+                if time.time() - idx_lock.stat().st_mtime > 30:
+                    idx_lock.unlink()
+            except OSError:
+                pass
+
+        _sync_git_and_netlify_locked(logs, env)
+    finally:
+        if lock_fh is not None:
+            try:
+                fcntl.flock(lock_fh.fileno(), fcntl.LOCK_UN)
+                lock_fh.close()
+            except OSError:
+                pass
+
+
+def _sync_git_and_netlify_locked(logs: list, env: dict):
 
     subprocess.run(
         [sys.executable, str(ROOT_DIR / "scripts" / "build_content.py")],
