@@ -7,14 +7,14 @@ window.SITE_CONFIG = {
     "name": "低調走過",
     "latinName": "Deediao",
     "studioTitle": "低調走過 · Field Notes & Essays",
-    "tagline": "這裡是一座持續生長的個人知識庫。",
+    "tagline": "這是一座持續成長的個人知識庫。",
     "role": "獨立研究者・數位應用思考者",
     "location": "Kaohsiung , Taiwan",
     "since": "2026",
     "email": "deediao@gmail.com"
   },
   "intro": {
-    "greeting": "這裡是一座持續生長的個人知識庫。",
+    "greeting": "這是一座持續成長的個人知識庫。",
     "lead": "我關注知識工作者的系統思考、決策品質與長期創作。長文（Essays）記錄完整的推論過程；筆記（Notes）留存閱讀摘錄與尚未定型的思考碎片；雙週電子報則將這些整理成一封安靜的信，寄到你的信箱。",
     "currentlyExploring": [
       "AI認知超載",
