@@ -16,7 +16,8 @@
 | **Drive 長文子資料夾** | `essays` (`1wWS7-UFucygkzaz237ppzJDiB3207TIT`) | 已上傳初始 3 篇長文 `.md` |
 | **Drive 筆記子資料夾** | `notes` (`1fv4vDPgjNKhPqSvZtYrdm9AC47bbkwOB`) | 已上傳初始 4 張知識卡片 `.md` |
 | **Drive 電子報子資料夾** | `letters` (`1dDJ53xY7N7bCSNSkRLHub82WJ7d9kqPQ`) | 已上傳初始 2 期電子報 `.md` |
-| **GitHub 預設對應帳號** | `deediaoyeh` (`https://github.com/deediaoyeh/personal-site`) | 本機已初始化獨立 Git `main` 分支並附 GitHub Actions |
+| **GitHub 程式碼倉庫** | `https://github.com/deediaoyeh/personal-site` | **已建立公開倉庫並完成推送**（帳號：`deediaoyeh`） |
+| **GitHub Pages 正式主站** | `https://deediaoyeh.github.io/personal-site/` | **已正式部署上線**（Actions Run ID: `45519119950`） |
 | **Netlify 備份站專案** | `deediao-studio` (Site ID: `eb87f73c-c435-4e6a-82b5-1e649fa2543b`) | **已正式部署上線**（`https://deediao-studio.netlify.app`，Deploy ID: `6b0629bdbf91524657ad0454`） |
 
 ---
@@ -97,6 +98,11 @@
    - 本機 Git 已設定預設 `origin` 為 `https://github.com/deediaoyeh/personal-site.git`（對應 GitHub Pages 主站網址：`https://deediaoyeh.github.io/personal-site/`），並於「電子報與同步」分頁新增遠端倉庫網址修改與綁定介面。
 4. **完成 Netlify 備份站首次正式部署（2026-11-25 08:20）**：
    - 於暫存區配置免安裝版 Node.js (`v22.14.0` arm64)，執行官方 `@netlify/mcp` 正式部署，成功將全站發佈上線至 **`https://deediao-studio.netlify.app`**（Deploy ID：`6b0629bdbf91524657ad0454`，狀態：`ready`）。
+5. **完成 GitHub 倉庫建立與 GitHub Pages 主站正式上線（2026-11-25 08:29–08:35）**：
+   - 透過 GitHub CLI 完成 OAuth 授權（`deediaoyeh`）並寫入本機 Git 憑證設定（`.local-bin/gh`），後續離線工作台點擊「立即執行雲端同步」可直接無感推送。
+   - 自動建立公開倉庫 **`https://github.com/deediaoyeh/personal-site`** 並推送 `main` 分支全部程式碼。
+   - 透過 GitHub API 開啟 GitHub Pages（`build_type=workflow`）並完成首次自動建置部署（Workflow Run ID：`45519119950`），正式主站 **`https://deediaoyeh.github.io/personal-site/`** 已成功上線。
+
 
 
 
