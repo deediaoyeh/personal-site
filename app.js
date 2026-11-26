@@ -304,6 +304,104 @@
       window.scrollTo({ top: 0, behavior: "instant" });
     }
     bindNewsletterForms();
+    schedulePageviewBeacon(route, slug);
+  }
+
+  // =========================================================================
+  // 輕量無痕點閱統計信標（不蒐集個資與 Cookie；自動排除本機與已開啟排除之站長瀏覽器）
+  // =========================================================================
+  let lastTrackedRoute = "";
+  let beaconTimer = null;
+
+  function getAnonVisitorHash() {
+    try {
+      const key = "deediao_anon_vid";
+      let vid = sessionStorage.getItem(key);
+      if (!vid) {
+        vid = Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+        sessionStorage.setItem(key, vid);
+      }
+      return vid;
+    } catch (_) {
+      return "anon";
+    }
+  }
+
+  function classifyReferrer() {
+    const ref = document.referrer || "";
+    if (!ref) return "直接造訪 (Direct)";
+    try {
+      const host = new URL(ref).hostname.toLowerCase().replace(/^www\./, "");
+      if (host === window.location.hostname.toLowerCase()) return "站內導覽";
+      if (host.includes("google.")) return "Google 搜尋";
+      if (host.includes("facebook.") || host.includes("fb.")) return "Facebook";
+      if (host.includes("threads.net")) return "Threads";
+      if (host.includes("line.me")) return "LINE";
+      if (host.includes("github.")) return "GitHub";
+      if (host.includes("bing.")) return "Bing 搜尋";
+      return host;
+    } catch (_) {
+      return "外部連結";
+    }
+  }
+
+  function detectDeviceKind() {
+    const ua = navigator.userAgent || "";
+    if (/ipad|tablet/i.test(ua)) return "tablet";
+    if (/mobi|iphone|android/i.test(ua)) return "mobile";
+    return "desktop";
+  }
+
+  function resolveRouteTitleAndType(route, slug) {
+    if (route === "home") return { title: "首頁 · 書齋總覽", pageType: "首頁" };
+    if (route === "about") return { title: "關於與近況 (/about)", pageType: "關於" };
+    if (route === "essays" && !slug) return { title: "深度長文列表", pageType: "列表" };
+    if (route === "notes" && !slug) return { title: "知識筆記列表", pageType: "列表" };
+    if (route === "letters" && !slug) return { title: "雙週電子報歸檔", pageType: "列表" };
+
+    if (slug && state.manifest?.items) {
+      const targetType = route === "essays" ? "essay" : route === "notes" ? "note" : "letter";
+      const found = state.manifest.items.find((i) => i.type === targetType && i.slug === slug);
+      const typeLabel = targetType === "essay" ? "長文" : targetType === "note" ? "筆記" : "電子報";
+      if (found) return { title: found.title, pageType: typeLabel };
+    }
+    return { title: window.location.hash || "#/", pageType: "頁面" };
+  }
+
+  function schedulePageviewBeacon(route, slug) {
+    if (IS_LOCAL_HOST) return;
+    try {
+      if (localStorage.getItem("deediao_owner_exclude_analytics") === "1") return;
+    } catch (_) {}
+
+    const scriptUrl = (CONFIG?.newsletter?.googleScriptUrl || "").trim();
+    if (!scriptUrl) return;
+
+    const canonicalRoute = window.location.hash || "#/";
+    if (canonicalRoute === lastTrackedRoute) return;
+
+    if (beaconTimer) clearTimeout(beaconTimer);
+    beaconTimer = setTimeout(() => {
+      lastTrackedRoute = canonicalRoute;
+      const info = resolveRouteTitleAndType(route, slug);
+      const payload = JSON.stringify({
+        action: "pageview",
+        route: canonicalRoute,
+        title: info.title,
+        pageType: info.pageType,
+        visitorHash: getAnonVisitorHash(),
+        referrer: classifyReferrer(),
+        device: detectDeviceKind(),
+        host: window.location.hostname
+      });
+      fetch(scriptUrl, {
+        method: "POST",
+        mode: "no-cors",
+        keepalive: true,
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: payload
+      }).catch(() => {});
+    }, 650);
   }
 
   // =========================================================================

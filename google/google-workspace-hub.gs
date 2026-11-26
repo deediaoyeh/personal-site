@@ -23,6 +23,9 @@ const HUB_CONFIG = {
   // 內容與草稿推送保護金鑰（選填，若填寫請與工作台／GitHub Secrets 一致）
   SYNC_TOKEN: "",
 
+  // 私密點閱儀表板讀取金鑰（必填以保護點閱統計僅站長可讀，請填入與本機 .sync.env STUDIO_ANALYTICS_KEY 相同之亂數金鑰）
+  ANALYTICS_READ_KEY: "",
+
   // 用於從 Google Sheet 選單「一鍵觸發 GitHub 主站與 Netlify 備份站同步」（選填）
   GITHUB_OWNER: "deediaoyeh",
   GITHUB_REPO: "personal-site",
@@ -31,6 +34,7 @@ const HUB_CONFIG = {
 
 const SHEET_SUBSCRIBERS = "Subscribers";
 const SHEET_ISSUES = "NewsletterDrafts";
+const SHEET_PAGEVIEWS = "PageViews";
 
 /**
  * 在 Google 試算表頂部建立「書齋控制台」自訂選單
@@ -73,6 +77,23 @@ function setupSheets() {
       ""
     ]);
   }
+
+  let pvSheet = ss.getSheetByName(SHEET_PAGEVIEWS);
+  if (!pvSheet) {
+    pvSheet = ss.insertSheet(SHEET_PAGEVIEWS);
+    pvSheet.appendRow([
+      "時間 (ISO)",
+      "日期 (YYYY-MM-DD)",
+      "路由路徑",
+      "頁面標題",
+      "內容類型",
+      "當日匿名訪客雜湊",
+      "流量來源",
+      "閱讀裝置",
+      "站點網域"
+    ]);
+    pvSheet.getRange("A1:I1").setFontWeight("bold");
+  }
 }
 
 /**
@@ -87,6 +108,17 @@ function doPost(e) {
 
     if (payload.action === "subscribe") {
       return handleSubscribe(payload);
+    }
+
+    if (payload.action === "pageview") {
+      return handleTrackPageview(payload);
+    }
+
+    if (payload.action === "analytics_summary") {
+      if (!HUB_CONFIG.ANALYTICS_READ_KEY || payload.analyticsKey !== HUB_CONFIG.ANALYTICS_READ_KEY) {
+        return jsonResponse({ ok: false, message: "拒絕存取：缺少或無效的站長私密點閱金鑰" });
+      }
+      return handleAnalyticsSummary();
     }
 
     if (payload.action === "save_draft") {
@@ -476,6 +508,181 @@ function triggerGitHubSync() {
   } else {
     ui.alert(`觸發失敗 (${res.getResponseCode()})：${res.getContentText()}`);
   }
+}
+
+/**
+ * 記錄公開網站匿名點閱事件（不蒐集 IP 與個資，僅記錄路由、標題、來源與裝置類型）
+ */
+function handleTrackPageview(payload) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const pvSheet = ss.getSheetByName(SHEET_PAGEVIEWS);
+  const now = new Date();
+  const tz = Session.getScriptTimeZone() || "Asia/Taipei";
+  const isoStr = now.toISOString();
+  const dateStr = Utilities.formatDate(now, tz, "yyyy-MM-dd");
+
+  const route = String(payload.route || "#/").slice(0, 180);
+  const title = String(payload.title || "首頁").slice(0, 160);
+  const pageType = String(payload.pageType || "home").slice(0, 32);
+  const visitorHash = String(payload.visitorHash || "anon").slice(0, 48);
+  const referrer = String(payload.referrer || "直接造訪").slice(0, 140);
+  const device = String(payload.device || "desktop").slice(0, 24);
+  const host = String(payload.host || "").slice(0, 80);
+
+  pvSheet.appendRow([isoStr, dateStr, route, title, pageType, visitorHash, referrer, device, host]);
+  return jsonResponse({ ok: true });
+}
+
+/**
+ * 彙整站長專屬私密點閱儀表板數據（僅在驗證 ANALYTICS_READ_KEY 通過後回傳）
+ */
+function handleAnalyticsSummary() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const pvSheet = ss.getSheetByName(SHEET_PAGEVIEWS);
+  const subSheet = ss.getSheetByName(SHEET_SUBSCRIBERS);
+  const tz = Session.getScriptTimeZone() || "Asia/Taipei";
+  const now = new Date();
+  const todayStr = Utilities.formatDate(now, tz, "yyyy-MM-dd");
+
+  // 建立過去 14 天的日期序列
+  const dayKeys = [];
+  const dailyMap = {};
+  for (let d = 13; d >= 0; d--) {
+    const dt = new Date(now.getTime() - d * 86400000);
+    const full = Utilities.formatDate(dt, tz, "yyyy-MM-dd");
+    const shortLabel = Utilities.formatDate(dt, tz, "MM/dd");
+    dayKeys.push(full);
+    dailyMap[full] = { fullDate: full, label: shortLabel, views: 0, visitorSet: {} };
+  }
+
+  const cutoff7d = Utilities.formatDate(new Date(now.getTime() - 6 * 86400000), tz, "yyyy-MM-dd");
+  const cutoff30d = Utilities.formatDate(new Date(now.getTime() - 29 * 86400000), tz, "yyyy-MM-dd");
+
+  const rows = pvSheet ? pvSheet.getDataRange().getValues() : [];
+  let totalViews = 0;
+  let todayViews = 0;
+  let last7dViews = 0;
+  let last30dViews = 0;
+  const allVisitorSet = {};
+  const todayVisitorSet = {};
+  const pageStats = {};
+  const referrerStats = {};
+  const deviceStats = { desktop: 0, mobile: 0, tablet: 0 };
+  const recentVisits = [];
+
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    const iso = r[0] instanceof Date ? r[0].toISOString() : String(r[0] || "");
+    const dStr =
+      r[1] instanceof Date ? Utilities.formatDate(r[1], tz, "yyyy-MM-dd") : String(r[1] || "").slice(0, 10);
+    const route = String(r[2] || "#/");
+    const title = String(r[3] || route);
+    const pType = String(r[4] || "page");
+    const vHash = String(r[5] || "anon");
+    const ref = String(r[6] || "直接造訪");
+    const dev = String(r[7] || "desktop").toLowerCase();
+    const host = String(r[8] || "");
+
+    totalViews++;
+    allVisitorSet[`${dStr}:${vHash}`] = true;
+
+    if (dStr === todayStr) {
+      todayViews++;
+      todayVisitorSet[vHash] = true;
+    }
+    if (dStr >= cutoff7d) last7dViews++;
+    if (dStr >= cutoff30d) last30dViews++;
+
+    if (dailyMap[dStr]) {
+      dailyMap[dStr].views++;
+      dailyMap[dStr].visitorSet[vHash] = true;
+    }
+
+    if (!pageStats[route]) {
+      pageStats[route] = { route: route, title: title, pageType: pType, views: 0, visitorSet: {} };
+    }
+    pageStats[route].views++;
+    pageStats[route].title = title || pageStats[route].title;
+    pageStats[route].pageType = pType || pageStats[route].pageType;
+    pageStats[route].visitorSet[`${dStr}:${vHash}`] = true;
+
+    referrerStats[ref] = (referrerStats[ref] || 0) + 1;
+
+    if (dev === "mobile") deviceStats.mobile++;
+    else if (dev === "tablet") deviceStats.tablet++;
+    else deviceStats.desktop++;
+  }
+
+  // 取最新 25 筆造訪紀錄（由新到舊）
+  for (let j = rows.length - 1; j >= 1 && recentVisits.length < 25; j--) {
+    const r = rows[j];
+    recentVisits.push({
+      timestamp: r[0] instanceof Date ? r[0].toISOString() : String(r[0] || ""),
+      route: String(r[2] || "#/"),
+      title: String(r[3] || ""),
+      pageType: String(r[4] || "page"),
+      referrer: String(r[6] || "直接造訪"),
+      device: String(r[7] || "desktop"),
+      host: String(r[8] || "")
+    });
+  }
+
+  // 統計電子報訂戶數
+  let activeSubscribers = 0;
+  let totalSubscribers = 0;
+  if (subSheet) {
+    const sRows = subSheet.getDataRange().getValues();
+    for (let k = 1; k < sRows.length; k++) {
+      if (sRows[k][0]) {
+        totalSubscribers++;
+        if (sRows[k][1] === "active") activeSubscribers++;
+      }
+    }
+  }
+
+  const dailySeries = dayKeys.map((k) => ({
+    fullDate: dailyMap[k].fullDate,
+    label: dailyMap[k].label,
+    views: dailyMap[k].views,
+    visitors: Object.keys(dailyMap[k].visitorSet).length
+  }));
+
+  const topPages = Object.keys(pageStats)
+    .map((k) => ({
+      route: pageStats[k].route,
+      title: pageStats[k].title,
+      pageType: pageStats[k].pageType,
+      views: pageStats[k].views,
+      visitors: Object.keys(pageStats[k].visitorSet).length
+    }))
+    .sort((a, b) => b.views - a.views)
+    .slice(0, 15);
+
+  const referrers = Object.keys(referrerStats)
+    .map((k) => ({ source: k, count: referrerStats[k] }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  return jsonResponse({
+    ok: true,
+    generatedAt: now.toISOString(),
+    sheetUrl: ss.getUrl(),
+    totals: {
+      totalViews: totalViews,
+      uniqueVisitors: Object.keys(allVisitorSet).length,
+      todayViews: todayViews,
+      todayVisitors: Object.keys(todayVisitorSet).length,
+      last7dViews: last7dViews,
+      last30dViews: last30dViews,
+      activeSubscribers: activeSubscribers,
+      totalSubscribers: totalSubscribers
+    },
+    dailySeries: dailySeries,
+    topPages: topPages,
+    referrers: referrers,
+    devices: deviceStats,
+    recentVisits: recentVisits
+  });
 }
 
 function jsonResponse(obj) {

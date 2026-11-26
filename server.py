@@ -14,6 +14,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import urllib.request
 from datetime import datetime
 from http import HTTPStatus
 from http.cookies import SimpleCookie
@@ -52,7 +53,14 @@ VIDEO_EXTS = {".mp4", ".webm", ".mov"}
 AUDIO_EXTS = {".mp3", ".m4a", ".wav"}
 
 PROTECTED_CORE_FILES = {"index.html", "styles.css", "theme.custom.css", "app.js"}
-EXCLUDED_STUDIO_FILES = {"studio.html", "studio.css", "studio.js", "studio-media.js", "studio-cloud-client.js"}
+EXCLUDED_STUDIO_FILES = {
+    "studio.html",
+    "studio.css",
+    "studio.js",
+    "studio-media.js",
+    "studio-cloud-client.js",
+    "studio-analytics.js",
+}
 
 # =========================================================================
 # Content Security Policy (CSP) 嚴謹安全標頭定義
@@ -293,6 +301,66 @@ def import_gdrive_file(file_id: str, name: str, mime_type: str) -> dict:
         "ext": dest.suffix.lstrip(".").upper() or "FILE",
         "kind": classify_ext(dest.suffix),
     }
+
+
+def read_private_analytics_key() -> str:
+    val = os.environ.get("STUDIO_ANALYTICS_KEY", "").strip()
+    if val:
+        return val
+    env_file = ROOT_DIR / ".sync.env"
+    if env_file.exists():
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("STUDIO_ANALYTICS_KEY="):
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    return ""
+
+
+def fetch_owner_analytics_summary() -> dict:
+    cfg = read_site_config()
+    script_url = (cfg.get("newsletter", {}) or {}).get("googleScriptUrl", "").strip()
+    if not script_url:
+        return {"ok": False, "message": "尚未於「電子報與同步」綁定 Google Apps Script 網址"}
+    key = read_private_analytics_key()
+    if not key:
+        return {"ok": False, "message": "本機尚未設定 STUDIO_ANALYTICS_KEY 私密讀取金鑰"}
+
+    payload = json.dumps({"action": "analytics_summary", "analyticsKey": key}).encode("utf-8")
+    req = urllib.request.Request(
+        script_url,
+        data=payload,
+        headers={"Content-Type": "text/plain;charset=utf-8"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=25) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def send_test_analytics_ping() -> dict:
+    cfg = read_site_config()
+    script_url = (cfg.get("newsletter", {}) or {}).get("googleScriptUrl", "").strip()
+    if not script_url:
+        return {"ok": False, "message": "尚未綁定 Google Apps Script 網址"}
+    payload = json.dumps(
+        {
+            "action": "pageview",
+            "route": "#/",
+            "title": "首頁 · 書齋總覽（工作台連線驗證）",
+            "pageType": "首頁",
+            "visitorHash": "owner-verify",
+            "referrer": "站長儀表板測試",
+            "device": "desktop",
+            "host": "deediaoyeh.github.io",
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        script_url,
+        data=payload,
+        headers={"Content-Type": "text/plain;charset=utf-8"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        return json.loads(resp.read().decode("utf-8"))
 
 
 def read_site_config() -> dict:
@@ -815,7 +883,7 @@ class StudioHandler(SimpleHTTPRequestHandler):
             super().do_GET()
             return
 
-        if clean_path in ("/studio.js", "/studio.css", "/studio-media.js", "/studio-cloud-client.js"):
+        if clean_path in ("/studio.js", "/studio.css", "/studio-media.js", "/studio-cloud-client.js", "/studio-analytics.js"):
             sess = AUTH.validate_session(self._get_session_token())
             if not sess:
                 self._send_html("401 Unauthorized", HTTPStatus.UNAUTHORIZED)
@@ -850,6 +918,14 @@ class StudioHandler(SimpleHTTPRequestHandler):
 
             if clean_path == "/api/studio/media":
                 self._send_json({"ok": True, "media": list_uploaded_media()})
+                return
+
+            if clean_path == "/api/studio/analytics":
+                try:
+                    summary = fetch_owner_analytics_summary()
+                    self._send_json(summary, HTTPStatus.OK if summary.get("ok") else HTTPStatus.BAD_REQUEST)
+                except Exception as exc:
+                    self._send_json({"ok": False, "message": f"讀取雲端點閱統計失敗：{exc}"}, HTTPStatus.BAD_GATEWAY)
                 return
 
             if clean_path == "/api/studio/gdrive/list":
@@ -1104,6 +1180,11 @@ class StudioHandler(SimpleHTTPRequestHandler):
                         "git": get_git_status_summary(),
                     }
                 )
+                return
+
+            if clean_path == "/api/studio/analytics/test-ping":
+                ping_res = send_test_analytics_ping()
+                self._send_json(ping_res, HTTPStatus.OK if ping_res.get("ok") else HTTPStatus.BAD_REQUEST)
                 return
 
             self._send_json({"ok": False, "message": "未知的 API 路徑"}, HTTPStatus.NOT_FOUND)

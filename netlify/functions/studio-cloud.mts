@@ -550,6 +550,54 @@ export default async (req: Request): Promise<Response> => {
       return jsonResp(req, { ok: true, media: await listUploadedMediaFromRepo() });
     }
 
+    // 站長專屬私密點閱統計（強制通過雲端 2FA JWT 驗證，並以伺服器端私密金鑰向 Google Workspace 調閱）
+    if (req.method === "GET" && subPath === "/analytics") {
+      const analyticsKey = Netlify.env.get("STUDIO_ANALYTICS_KEY") || "";
+      if (!analyticsKey) {
+        return jsonResp(req, { ok: false, message: "雲端尚未設定 STUDIO_ANALYTICS_KEY 私密金鑰" }, 400);
+      }
+      const cfgRaw = await readRepoTextFile("site.config.js");
+      const mCfg = cfgRaw.match(/window\.SITE_CONFIG\s*=\s*(\{[\s\S]*\})\s*;?\s*$/);
+      const cfg = mCfg ? JSON.parse(mCfg[1]) : {};
+      const scriptUrl = String(cfg?.newsletter?.googleScriptUrl || "").trim();
+      if (!scriptUrl) {
+        return jsonResp(req, { ok: false, message: "尚未設定 Google Apps Script 網址" }, 400);
+      }
+      const gsRes = await fetch(scriptUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "analytics_summary", analyticsKey }),
+      });
+      const gsData = await gsRes.json();
+      return jsonResp(req, gsData, gsData.ok ? 200 : 400);
+    }
+
+    if (req.method === "POST" && subPath === "/analytics/test-ping") {
+      const cfgRaw = await readRepoTextFile("site.config.js");
+      const mCfg = cfgRaw.match(/window\.SITE_CONFIG\s*=\s*(\{[\s\S]*\})\s*;?\s*$/);
+      const cfg = mCfg ? JSON.parse(mCfg[1]) : {};
+      const scriptUrl = String(cfg?.newsletter?.googleScriptUrl || "").trim();
+      if (!scriptUrl) {
+        return jsonResp(req, { ok: false, message: "尚未設定 Google Apps Script 網址" }, 400);
+      }
+      const gsRes = await fetch(scriptUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({
+          action: "pageview",
+          route: "#/",
+          title: "首頁 · 書齋總覽（雲端工作台驗證）",
+          pageType: "首頁",
+          visitorHash: "owner-cloud-verify",
+          referrer: "站長儀表板測試",
+          device: "desktop",
+          host: "deediaoyeh.github.io",
+        }),
+      });
+      const gsData = await gsRes.json();
+      return jsonResp(req, gsData, gsData.ok ? 200 : 400);
+    }
+
     // 讀取單篇文章
     if (req.method === "GET" && subPath === "/item") {
       const docType = url.searchParams.get("type") || "essay";

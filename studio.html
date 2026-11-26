@@ -28,6 +28,7 @@
       <button type="button" class="studio-tab" data-tab="about">關於近況</button>
       <button type="button" class="studio-tab" data-tab="theme">視覺字級</button>
       <button type="button" class="studio-tab" data-tab="sync">電子報與同步</button>
+      <button type="button" class="studio-tab" data-tab="analytics">站台點閱</button>
     </nav>
 
     <div class="studio-actions">
@@ -584,6 +585,127 @@
         </div>
       </div>
     </section>
+
+    <!-- ==================== Tab 7: 站長專屬私密點閱儀表板 ==================== -->
+    <section id="tab-analytics" class="studio-panel" hidden>
+      <div class="analytics-scroll-wrap">
+        <div class="analytics-header-bar">
+          <div>
+            <span class="mono-label" style="font-size:0.72rem; color:var(--accent);">PRIVATE OWNER ANALYTICS · 雙重驗證保護 · 僅站長本人可檢閱</span>
+            <h2 class="pane-section-title" style="margin:4px 0 0;">站台點閱與讀者互動儀表板</h2>
+          </div>
+
+          <div class="analytics-controls">
+            <label class="analytics-exclude-toggle" title="開啟後，你用這台電腦瀏覽公開網站時不會計入點閱，確保統計真實反映外部讀者">
+              <input type="checkbox" id="analytics-exclude-self-chk" />
+              <span>排除我自己的瀏覽</span>
+            </label>
+            <button type="button" id="analytics-test-ping-btn" class="studio-btn studio-btn-outline">＋ 發送測試點閱</button>
+            <button type="button" id="analytics-refresh-btn" class="studio-btn studio-btn-primary">↻ 重新整理數據</button>
+            <a id="analytics-sheet-link" href="https://docs.google.com/spreadsheets/d/1U8KfbqaU5Sfb2d75WMRTMfk5sFsQ8vfFOVSZIpymd0o/edit" target="_blank" rel="noopener noreferrer" class="studio-btn studio-btn-ghost">原始試算表 ↗</a>
+          </div>
+        </div>
+
+        <div id="analytics-alert-banner" class="analytics-banner" hidden></div>
+
+        <!-- 四大核心指標 KPI 卡 -->
+        <div class="analytics-kpi-grid">
+          <div class="analytics-kpi-card">
+            <span class="mono-label kpi-kicker">TOTAL PAGEVIEWS · 累計總點閱</span>
+            <div class="kpi-num" id="kpi-total-views">—</div>
+            <div class="kpi-sub" id="kpi-today-views">今日新增 — 次</div>
+          </div>
+          <div class="analytics-kpi-card">
+            <span class="mono-label kpi-kicker">UNIQUE VISITORS · 不重複訪客</span>
+            <div class="kpi-num" id="kpi-unique-visitors">—</div>
+            <div class="kpi-sub" id="kpi-today-visitors">今日訪客 — 人</div>
+          </div>
+          <div class="analytics-kpi-card">
+            <span class="mono-label kpi-kicker">RECENT TRAFFIC · 近期閱讀熱度</span>
+            <div class="kpi-num" id="kpi-7d-views">—</div>
+            <div class="kpi-sub" id="kpi-30d-views">近 7 日點閱（近 30 日 — 次）</div>
+          </div>
+          <div class="analytics-kpi-card">
+            <span class="mono-label kpi-kicker">SUBSCRIBERS · 電子報有效訂戶</span>
+            <div class="kpi-num" id="kpi-active-subs">—</div>
+            <div class="kpi-sub" id="kpi-total-subs">總累計名單 — 人</div>
+          </div>
+        </div>
+
+        <!-- 近 14 日每日趨勢圖 -->
+        <div class="analytics-box">
+          <div class="analytics-box-head">
+            <div>
+              <span class="mono-label kpi-kicker">14-DAY TREND</span>
+              <h3 class="analytics-box-title">近 14 日點閱趨勢</h3>
+            </div>
+            <span id="analytics-updated-at" class="mono-label" style="font-size:0.74rem; color:var(--ink-muted);">尚未載入</span>
+          </div>
+          <div id="analytics-daily-chart" class="analytics-chart-bars"></div>
+        </div>
+
+        <!-- 中段雙欄：熱門文章排行 ＋ 來源與裝置分佈 -->
+        <div class="analytics-two-col">
+          <div class="analytics-box">
+            <div class="analytics-box-head">
+              <div>
+                <span class="mono-label kpi-kicker">TOP CONTENT</span>
+                <h3 class="analytics-box-title">熱門文章與頁面排行</h3>
+              </div>
+            </div>
+            <div id="analytics-top-pages" class="analytics-rank-list"></div>
+          </div>
+
+          <div class="analytics-side-stack">
+            <div class="analytics-box">
+              <div class="analytics-box-head">
+                <div>
+                  <span class="mono-label kpi-kicker">TRAFFIC SOURCES</span>
+                  <h3 class="analytics-box-title">訪客來源管道</h3>
+                </div>
+              </div>
+              <div id="analytics-referrers" class="analytics-rank-list"></div>
+            </div>
+
+            <div class="analytics-box">
+              <div class="analytics-box-head">
+                <div>
+                  <span class="mono-label kpi-kicker">DEVICES</span>
+                  <h3 class="analytics-box-title">閱讀裝置比例</h3>
+                </div>
+              </div>
+              <div id="analytics-devices" class="analytics-rank-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 最新即時造訪紀錄 -->
+        <div class="analytics-box">
+          <div class="analytics-box-head">
+            <div>
+              <span class="mono-label kpi-kicker">RECENT ACTIVITY</span>
+              <h3 class="analytics-box-title">最新 25 筆造訪紀錄</h3>
+            </div>
+          </div>
+          <div class="analytics-table-wrap">
+            <table class="analytics-table">
+              <thead>
+                <tr>
+                  <th>時間</th>
+                  <th>類型</th>
+                  <th>閱讀頁面</th>
+                  <th>來源管道</th>
+                  <th>裝置</th>
+                </tr>
+              </thead>
+              <tbody id="analytics-recent-tbody">
+                <tr><td colspan="5" style="color:var(--ink-muted); text-align:center; padding:24px;">載入中⋯</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
 
   <!-- 隱藏本機圖片與檔案選擇器（亦支援直接拖曳檔案進任何編輯區） -->
@@ -633,5 +755,6 @@
   <script src="./studio-cloud-client.js"></script>
   <script src="./studio.js"></script>
   <script src="./studio-media.js"></script>
+  <script src="./studio-analytics.js"></script>
 </body>
 </html>

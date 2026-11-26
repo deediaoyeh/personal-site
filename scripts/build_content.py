@@ -232,6 +232,7 @@ def bundle_public_site(dest_name: str):
         "studio-cloud-client.js",
         "studio.js",
         "studio-media.js",
+        "studio-analytics.js",
     ):
         src = ROOT_DIR / static_name
         if src.exists():
