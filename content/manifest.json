@@ -1,7 +1,23 @@
 {
-  "updatedAt": "2026-11-26T05:51:14Z",
-  "count": 7,
+  "updatedAt": "2026-11-26T06:03:16Z",
+  "count": 8,
   "items": [
+    {
+      "title": "３小時學習歷程講課內容摘要",
+      "slug": "essay-20261126-3",
+      "type": "essay",
+      "format": "markdown",
+      "date": "2026-11-26",
+      "readingTime": "19 min",
+      "summary": "提供３小時研習內容講述摘要與圖卡",
+      "tags": [
+        "AI",
+        "工具應用",
+        "學習歷程"
+      ],
+      "links": [],
+      "path": "./content/essays/essay-20261126-3.md"
+    },
     {
       "title": "《低調走過》雙週電子報 № 01：自主學習的起點——給學生嘗試的安全感與 AI 資料庫引導",
       "slug": "letter-20261126-1",
