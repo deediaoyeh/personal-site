@@ -1,6 +1,6 @@
 {
-  "updatedAt": "2026-11-26T08:53:38Z",
-  "count": 8,
+  "updatedAt": "2026-11-26T11:01:35Z",
+  "count": 9,
   "items": [
     {
       "title": "３小時學習歷程講課內容摘要",
@@ -17,6 +17,22 @@
       ],
       "links": [],
       "path": "./content/essays/essay-20261126-3.md"
+    },
+    {
+      "title": "自己的程式自己寫-用Antigravity打造個人媒體網頁",
+      "slug": "essay-20261126-4",
+      "type": "essay",
+      "format": "markdown",
+      "date": "2026-11-26",
+      "readingTime": "18 min",
+      "summary": "我自己用 Antigravity 打造了一個我個人品牌的網頁，這個文件裡面，以一個沒有基礎的新手來思考，要怎麼快速地可以打造自己的個人媒體網頁",
+      "tags": [
+        "AI",
+        "工具應用",
+        "想法"
+      ],
+      "links": [],
+      "path": "./content/essays/essay-20261126-4.md"
     },
     {
       "title": "《低調走過》雙週電子報 № 01：自主學習的起點——給學生嘗試的安全感與 AI 資料庫引導",
