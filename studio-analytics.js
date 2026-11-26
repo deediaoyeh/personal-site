@@ -9,6 +9,10 @@
   const EXCLUDE_KEY = "deediao_owner_exclude_analytics";
   let loadedOnce = false;
   let isLoading = false;
+  let latestData = null;
+  let hourlyMode = "30d"; // "30d" | "today"
+  let subStatusFilter = "all"; // "all" | "active" | "pending" | "unsubscribed"
+  let subSearchQuery = "";
 
   function bridge() {
     return window.__STUDIO_BRIDGE__;
@@ -61,6 +65,96 @@
         btn.disabled = false;
       }
     });
+
+    // 分時閱覽模式切換（近 30 日各時段 vs 今日各時段）
+    document.querySelectorAll("[data-hourly-mode]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        hourlyMode = btn.getAttribute("data-hourly-mode") || "30d";
+        document.querySelectorAll("[data-hourly-mode]").forEach((b) => {
+          b.classList.toggle("is-active", b === btn);
+        });
+        if (latestData) {
+          renderHourlySection(latestData.hourlySeries || []);
+        }
+      });
+    });
+
+    // 電子報訂戶狀態篩選
+    document.querySelectorAll("[data-sub-filter]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        subStatusFilter = btn.getAttribute("data-sub-filter") || "all";
+        document.querySelectorAll("[data-sub-filter]").forEach((b) => {
+          b.classList.toggle("is-active", b === btn);
+        });
+        if (latestData) {
+          renderSubscribersSection(latestData.subscribers || [], latestData.totals || {});
+        }
+      });
+    });
+
+    // 電子報訂戶關鍵字搜尋
+    document.getElementById("subs-search-input")?.addEventListener("input", (e) => {
+      subSearchQuery = String(e.target.value || "").trim().toLowerCase();
+      if (latestData) {
+        renderSubscribersSection(latestData.subscribers || [], latestData.totals || {});
+      }
+    });
+
+    // 一鍵複製所有有效訂戶 Email
+    document.getElementById("copy-active-subs-btn")?.addEventListener("click", async () => {
+      const subs = (latestData?.subscribers || []).filter((s) => s.status === "active");
+      if (!subs.length) {
+        bridge()?.setStatus("目前尚無已確認 (active) 的有效訂戶信箱可複製");
+        return;
+      }
+      const text = subs.map((s) => s.email).join(", ");
+      try {
+        await navigator.clipboard.writeText(text);
+        bridge()?.setStatus(`✓ 已複製 ${subs.length} 位有效訂戶 Email 至剪貼簿`, "is-saved");
+      } catch (_) {
+        showBanner("瀏覽器未允許剪貼簿權限，請改按「匯出 CSV」下載名單。", true);
+      }
+    });
+
+    // 匯出訂戶名單 CSV（含防試算表公式注入保護）
+    document.getElementById("export-subs-csv-btn")?.addEventListener("click", () => {
+      const subs = getFilteredSubscribers(latestData?.subscribers || []);
+      if (!subs.length) {
+        bridge()?.setStatus("目前篩選條件下沒有訂戶資料可匯出");
+        return;
+      }
+      const csvSafe = (val) => {
+        let s = String(val ?? "").replace(/"/g, '""');
+        if (/^[=+\-@'"\t\r\n]/.test(s.trimStart())) {
+          s = "'" + s;
+        }
+        return `"${s}"`;
+      };
+      const lines = [
+        ["序號", "Email", "狀態", "訂閱或確認時間", "來源頁面"].map(csvSafe).join(","),
+        ...subs.map((s, idx) =>
+          [
+            idx + 1,
+            s.email,
+            statusLabelText(s.status),
+            formatVisitTime(s.subscribedAt),
+            s.source || "#/"
+          ]
+            .map(csvSafe)
+            .join(",")
+        )
+      ];
+      const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `subscribers-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      bridge()?.setStatus(`✓ 已匯出 ${subs.length} 筆訂戶名單 CSV`, "is-saved");
+    });
   }
 
   function showBanner(msg, isError = false) {
@@ -91,6 +185,7 @@
         throw new Error(data.message || "無法取得點閱統計資料");
       }
       loadedOnce = true;
+      latestData = data;
       renderDashboard(data);
       const tStr = new Date().toLocaleTimeString("zh-TW", { hour12: false });
       document.getElementById("analytics-updated-at").textContent = `最後更新：${tStr}`;
@@ -124,7 +219,11 @@
     document.getElementById("kpi-30d-views").textContent = `近 7 日點閱（近 30 日 ${fmtNum(tot.last30dViews || 0)} 次）`;
 
     document.getElementById("kpi-active-subs").textContent = fmtNum(tot.activeSubscribers || 0);
-    document.getElementById("kpi-total-subs").textContent = `總累計名單 ${fmtNum(tot.totalSubscribers || 0)} 人`;
+    const pendingCnt = Number(tot.pendingSubscribers || 0);
+    document.getElementById("kpi-total-subs").textContent =
+      pendingCnt > 0
+        ? `總名單 ${fmtNum(tot.totalSubscribers || 0)} 人（待確認 ${fmtNum(pendingCnt)}）`
+        : `總累計名單 ${fmtNum(tot.totalSubscribers || 0)} 人`;
 
     if (data.sheetUrl) {
       const link = document.getElementById("analytics-sheet-link");
@@ -132,9 +231,11 @@
     }
 
     renderDailyChart(data.dailySeries || []);
+    renderHourlySection(data.hourlySeries || []);
     renderTopPages(data.topPages || [], tot.totalViews || 0);
     renderReferrers(data.referrers || [], tot.totalViews || 0);
     renderDevices(data.devices || {}, tot.totalViews || 0);
+    renderSubscribersSection(data.subscribers || [], tot);
     renderRecentVisits(data.recentVisits || []);
   }
 
@@ -157,6 +258,136 @@
             </div>
             <span class="chart-date mono-label">${esc(d.label)}</span>
           </div>
+        `;
+      })
+      .join("");
+  }
+
+  function renderHourlySection(rawSeries) {
+    const wrap = document.getElementById("analytics-hourly-chart");
+    const periodWrap = document.getElementById("analytics-hourly-periods");
+    const peakEl = document.getElementById("hourly-peak-summary");
+    if (!wrap) return;
+
+    // 補齊 00..23 共 24 小時欄位
+    const series = [];
+    for (let h = 0; h < 24; h++) {
+      const found = rawSeries.find((item) => Number(item.hour) === h) || {};
+      series.push({
+        hour: h,
+        label: found.label || String(h).padStart(2, "0"),
+        visitors: Number(hourlyMode === "today" ? found.todayVisitors || 0 : found.visitors || 0),
+        views: Number(hourlyMode === "today" ? found.todayViews || 0 : found.views || 0),
+        avgDwellSec: Number(found.avgDwellSec || 0)
+      });
+    }
+
+    const maxVisitors = Math.max(1, ...series.map((s) => s.visitors));
+    let peakItem = null;
+    for (const s of series) {
+      if (s.visitors > 0 && (!peakItem || s.visitors > peakItem.visitors || (s.visitors === peakItem.visitors && s.views > peakItem.views))) {
+        peakItem = s;
+      }
+    }
+
+    if (peakEl) {
+      if (peakItem) {
+        const nextHr = String((peakItem.hour + 1) % 24).padStart(2, "0");
+        peakEl.textContent = `尖峰時段 ${peakItem.label}:00–${nextHr}:00 · ${fmtNum(peakItem.visitors)} 人 / ${fmtNum(peakItem.views)} 次`;
+      } else {
+        peakEl.textContent = hourlyMode === "today" ? "今日尚無分時閱覽紀錄" : "尚無分時閱覽紀錄";
+      }
+    }
+
+    wrap.innerHTML = series
+      .map((s) => {
+        const pct = Math.max(s.visitors > 0 ? 10 : 2, Math.round((s.visitors / maxVisitors) * 100));
+        const isPeak = Boolean(peakItem && s.hour === peakItem.hour && s.visitors > 0);
+        const dwellHint = s.avgDwellSec > 0 ? ` · 平均停留 ${fmtDuration(s.avgDwellSec)}` : "";
+        const tip = `${s.label}:00–${s.label}:59｜閱覽人數 ${s.visitors} 人 · 點閱 ${s.views} 次${dwellHint}`;
+        return `
+          <div class="hourly-col" title="${esc(tip)}">
+            <span class="chart-val mono-label">${s.visitors > 0 ? `${s.visitors}人` : ""}</span>
+            <div class="hourly-bar-track">
+              <div class="hourly-bar-fill ${s.visitors > 0 ? "has-data" : ""} ${isPeak ? "is-peak" : ""}" style="height:${pct}%;"></div>
+            </div>
+            <span class="chart-date mono-label">${esc(s.label)}時</span>
+          </div>
+        `;
+      })
+      .join("");
+
+    if (periodWrap) {
+      const periods = [
+        { name: "深夜清晨 (00:00–05:59)", start: 0, end: 5 },
+        { name: "上午時段 (06:00–11:59)", start: 6, end: 11 },
+        { name: "午後時段 (12:00–17:59)", start: 12, end: 17 },
+        { name: "晚間閱讀 (18:00–23:59)", start: 18, end: 23 }
+      ];
+      const totalPersonSlots = series.reduce((acc, s) => acc + s.visitors, 0);
+      periodWrap.innerHTML = periods
+        .map((p) => {
+          const slice = series.filter((s) => s.hour >= p.start && s.hour <= p.end);
+          const pVisitors = slice.reduce((acc, s) => acc + s.visitors, 0);
+          const pViews = slice.reduce((acc, s) => acc + s.views, 0);
+          const share = totalPersonSlots > 0 ? Math.round((pVisitors / totalPersonSlots) * 100) : 0;
+          return `
+            <div class="period-summary-card">
+              <span class="period-summary-label mono-label">${esc(p.name)}</span>
+              <div class="period-summary-val"><strong>${fmtNum(pVisitors)}</strong> 人次 <span class="mono-label" style="font-size:0.76rem; color:var(--ink-muted);">· ${fmtNum(pViews)} 次點閱 (${share}%)</span></div>
+            </div>
+          `;
+        })
+        .join("");
+    }
+  }
+
+  function getFilteredSubscribers(allSubs) {
+    return allSubs.filter((s) => {
+      if (subStatusFilter !== "all" && s.status !== subStatusFilter) return false;
+      if (subSearchQuery) {
+        const hay = `${s.email || ""} ${s.source || ""}`.toLowerCase();
+        if (!hay.includes(subSearchQuery)) return false;
+      }
+      return true;
+    });
+  }
+
+  function statusLabelText(status) {
+    if (status === "active") return "✓ 有效訂戶";
+    if (status === "unsubscribed") return "已退訂";
+    return "⏳ 待信箱確認";
+  }
+
+  function renderSubscribersSection(allSubs, totals) {
+    const summaryEl = document.getElementById("subs-status-summary");
+    const tbody = document.getElementById("analytics-subscribers-tbody");
+    if (summaryEl) {
+      const activeCnt = Number(totals.activeSubscribers ?? allSubs.filter((s) => s.status === "active").length);
+      const pendingCnt = Number(totals.pendingSubscribers ?? allSubs.filter((s) => s.status === "pending").length);
+      const unsubCnt = Number(totals.unsubscribedSubscribers ?? allSubs.filter((s) => s.status === "unsubscribed").length);
+      summaryEl.textContent = `有效訂戶 ${fmtNum(activeCnt)} 人 · 待信箱確認 ${fmtNum(pendingCnt)} 人 · 已退訂 ${fmtNum(unsubCnt)} 人（共 ${fmtNum(allSubs.length)} 筆）`;
+    }
+    if (!tbody) return;
+
+    const filtered = getFilteredSubscribers(allSubs);
+    if (!filtered.length) {
+      const emptyMsg = allSubs.length === 0 ? "目前尚無電子報訂閱紀錄" : "沒有符合目前篩選條件的訂戶";
+      tbody.innerHTML = `<tr><td colspan="5" style="color:var(--ink-muted); text-align:center; padding:24px;">${esc(emptyMsg)}</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = filtered
+      .map((s, idx) => {
+        const st = s.status === "active" ? "is-active" : s.status === "unsubscribed" ? "is-unsubscribed" : "is-pending";
+        return `
+          <tr>
+            <td class="mono-label" style="color:var(--ink-muted); font-size:0.76rem;">${idx + 1}</td>
+            <td class="mono-label" style="font-weight:500;">${esc(s.email)}</td>
+            <td><span class="sub-status-pill mono-label ${st}">${esc(statusLabelText(s.status))}</span></td>
+            <td class="mono-label" style="white-space:nowrap; font-size:0.78rem;">${esc(formatVisitTime(s.subscribedAt))}</td>
+            <td class="mono-label" style="font-size:0.78rem; color:var(--ink-secondary);">${esc(s.source || "#/")}</td>
+          </tr>
         `;
       })
       .join("");

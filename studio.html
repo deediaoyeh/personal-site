@@ -8,9 +8,9 @@
     content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' blob: https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; frame-src 'self' blob: https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self' https://deediao-studio.netlify.app https://raw.githubusercontent.com https://www.googleapis.com https://www.youtube.com https://script.google.com https://script.googleusercontent.com; object-src 'none'; base-uri 'self'; form-action 'self'"
   />
   <title>書齋離線工作台 · Offline Website & HTML Studio</title>
-  <link rel="stylesheet" href="./styles.css?v=20261126110141" />
-  <link rel="stylesheet" href="./theme.custom.css?v=20261126110141" />
-  <link rel="stylesheet" href="./studio.css?v=20261126110141" />
+  <link rel="stylesheet" href="./styles.css?v=20261126110957" />
+  <link rel="stylesheet" href="./theme.custom.css?v=20261126110957" />
+  <link rel="stylesheet" href="./studio.css?v=20261126110957" />
 </head>
 <body class="studio-body">
   <!-- 頂部工作台工具列 -->
@@ -649,6 +649,25 @@
           <div id="analytics-daily-chart" class="analytics-chart-bars"></div>
         </div>
 
+        <!-- 24 小時分時閱覽人數紀錄 -->
+        <div class="analytics-box">
+          <div class="analytics-box-head analytics-box-head-wrap">
+            <div>
+              <span class="mono-label kpi-kicker">HOURLY VISITORS · 台灣時區 (00:00 – 23:59)</span>
+              <h3 class="analytics-box-title">24 小時分時閱覽人數紀錄</h3>
+            </div>
+            <div class="analytics-sub-toolbar">
+              <span id="hourly-peak-summary" class="analytics-peak-pill mono-label">尖峰時段計算中⋯</span>
+              <div class="mode-seg-group" role="group" aria-label="分時統計範圍切換">
+                <button type="button" class="mode-seg-btn is-active" data-hourly-mode="30d">近 30 日各時段人數</button>
+                <button type="button" class="mode-seg-btn" data-hourly-mode="today">今日各時段人數</button>
+              </div>
+            </div>
+          </div>
+          <div id="analytics-hourly-chart" class="analytics-hourly-bars"></div>
+          <div id="analytics-hourly-periods" class="analytics-period-strip"></div>
+        </div>
+
         <!-- 中段雙欄：熱門文章排行 ＋ 來源與裝置分佈 -->
         <div class="analytics-two-col">
           <div class="analytics-box">
@@ -681,6 +700,44 @@
               </div>
               <div id="analytics-devices" class="analytics-rank-list"></div>
             </div>
+          </div>
+        </div>
+
+        <!-- 電子報訂購名單 -->
+        <div class="analytics-box">
+          <div class="analytics-box-head analytics-box-head-wrap">
+            <div>
+              <span class="mono-label kpi-kicker">NEWSLETTER SUBSCRIBERS · 私密訂戶名冊</span>
+              <h3 class="analytics-box-title">電子報訂購名單</h3>
+              <div id="subs-status-summary" class="subs-summary-line mono-label">載入訂戶統計中⋯</div>
+            </div>
+            <div class="analytics-sub-toolbar">
+              <div class="mode-seg-group" role="group" aria-label="訂戶狀態篩選">
+                <button type="button" class="mode-seg-btn is-active" data-sub-filter="all">全部</button>
+                <button type="button" class="mode-seg-btn" data-sub-filter="active">有效訂戶</button>
+                <button type="button" class="mode-seg-btn" data-sub-filter="pending">待確認</button>
+                <button type="button" class="mode-seg-btn" data-sub-filter="unsubscribed">已退訂</button>
+              </div>
+              <input type="search" id="subs-search-input" class="studio-field-input subs-search-box" placeholder="搜尋信箱或來源⋯" />
+              <button type="button" id="copy-active-subs-btn" class="studio-btn studio-btn-outline">複製有效信箱</button>
+              <button type="button" id="export-subs-csv-btn" class="studio-btn studio-btn-ghost">匯出 CSV</button>
+            </div>
+          </div>
+          <div class="analytics-table-wrap">
+            <table class="analytics-table">
+              <thead>
+                <tr>
+                  <th style="width:52px;">#</th>
+                  <th>訂閱信箱 (Email)</th>
+                  <th>狀態</th>
+                  <th>訂閱／確認時間</th>
+                  <th>訂閱來源頁面</th>
+                </tr>
+              </thead>
+              <tbody id="analytics-subscribers-tbody">
+                <tr><td colspan="5" style="color:var(--ink-muted); text-align:center; padding:24px;">載入中⋯</td></tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -758,10 +815,10 @@
     </div>
   </div>
 
-  <script src="./site.config.js?v=20261126110141"></script>
-  <script src="./studio-cloud-client.js?v=20261126110141"></script>
-  <script src="./studio.js?v=20261126110141"></script>
-  <script src="./studio-media.js?v=20261126110141"></script>
-  <script src="./studio-analytics.js?v=20261126110141"></script>
+  <script src="./site.config.js?v=20261126110957"></script>
+  <script src="./studio-cloud-client.js?v=20261126110957"></script>
+  <script src="./studio.js?v=20261126110957"></script>
+  <script src="./studio-media.js?v=20261126110957"></script>
+  <script src="./studio-analytics.js?v=20261126110957"></script>
 </body>
 </html>

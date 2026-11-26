@@ -876,12 +876,38 @@ function handleAnalyticsSummary() {
   const deviceStats = { desktop: 0, mobile: 0, tablet: 0 };
   const recentVisits = [];
 
+  const hourlyBuckets = [];
+  for (let h = 0; h < 24; h++) {
+    hourlyBuckets.push({
+      hour: h,
+      label: (h < 10 ? "0" : "") + h,
+      views: 0,
+      visitorSet: {},
+      todayViews: 0,
+      todayVisitorSet: {},
+      dwellSum: 0,
+      dwellCnt: 0
+    });
+  }
+
   const unquote = (v) => String(v || "").replace(/^'/, "");
 
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];
+    let visitDateObj = null;
+    if (r[0] instanceof Date) {
+      visitDateObj = r[0];
+    } else {
+      const parsedTs = new Date(unquote(r[0]));
+      if (!isNaN(parsedTs.getTime())) visitDateObj = parsedTs;
+    }
     const dStr =
-      r[1] instanceof Date ? Utilities.formatDate(r[1], tz, "yyyy-MM-dd") : unquote(r[1]).slice(0, 10);
+      r[1] instanceof Date
+        ? Utilities.formatDate(r[1], tz, "yyyy-MM-dd")
+        : visitDateObj
+        ? Utilities.formatDate(visitDateObj, tz, "yyyy-MM-dd")
+        : unquote(r[1]).slice(0, 10);
+    const hourNum = visitDateObj ? Number(Utilities.formatDate(visitDateObj, tz, "HH")) : -1;
     const route = unquote(r[2]) || "#/";
     const title = unquote(r[3]) || route;
     const pType = unquote(r[4]) || "page";
@@ -902,7 +928,22 @@ function handleAnalyticsSummary() {
       todayVisitorSet[vHash] = true;
     }
     if (dStr >= cutoff7d) last7dViews++;
-    if (dStr >= cutoff30d) last30dViews++;
+    if (dStr >= cutoff30d) {
+      last30dViews++;
+      if (hourNum >= 0 && hourNum < 24) {
+        const hb = hourlyBuckets[hourNum];
+        hb.views++;
+        hb.visitorSet[`${dStr}:${vHash}`] = true;
+        if (dwell > 0) {
+          hb.dwellSum += dwell;
+          hb.dwellCnt++;
+        }
+        if (dStr === todayStr) {
+          hb.todayViews++;
+          hb.todayVisitorSet[vHash] = true;
+        }
+      }
+    }
 
     if (dailyMap[dStr]) {
       dailyMap[dStr].views++;
@@ -951,16 +992,44 @@ function handleAnalyticsSummary() {
   }
 
   let activeSubscribers = 0;
+  let pendingSubscribers = 0;
+  let unsubscribedSubscribers = 0;
   let totalSubscribers = 0;
+  const subscribers = [];
   if (subSheet) {
     const sRows = subSheet.getDataRange().getValues();
     for (let k = 1; k < sRows.length; k++) {
-      if (sRows[k][0]) {
+      const subEmail = unquote(sRows[k][0]).trim();
+      if (subEmail) {
         totalSubscribers++;
-        if (sRows[k][1] === "active") activeSubscribers++;
+        const subStatus = unquote(sRows[k][1]).trim().toLowerCase() || "pending";
+        if (subStatus === "active") activeSubscribers++;
+        else if (subStatus === "unsubscribed") unsubscribedSubscribers++;
+        else pendingSubscribers++;
+
+        const subTime =
+          sRows[k][2] instanceof Date ? sRows[k][2].toISOString() : unquote(sRows[k][2]).trim();
+        const subSource = unquote(sRows[k][3]).trim() || "#/";
+        subscribers.push({
+          email: subEmail,
+          status: subStatus,
+          subscribedAt: subTime,
+          source: subSource
+        });
       }
     }
   }
+  subscribers.sort((a, b) => String(b.subscribedAt || "").localeCompare(String(a.subscribedAt || "")));
+
+  const hourlySeries = hourlyBuckets.map((hb) => ({
+    hour: hb.hour,
+    label: hb.label,
+    views: hb.views,
+    visitors: Object.keys(hb.visitorSet).length,
+    todayViews: hb.todayViews,
+    todayVisitors: Object.keys(hb.todayVisitorSet).length,
+    avgDwellSec: hb.dwellCnt > 0 ? Math.round(hb.dwellSum / hb.dwellCnt) : 0
+  }));
 
   const dailySeries = dayKeys.map((k) => ({
     fullDate: dailyMap[k].fullDate,
@@ -1004,9 +1073,13 @@ function handleAnalyticsSummary() {
       totalDwellSec: totalDwellSec,
       avgDwellSec: dwellSampleCount > 0 ? Math.round(totalDwellSec / dwellSampleCount) : 0,
       activeSubscribers: activeSubscribers,
+      pendingSubscribers: pendingSubscribers,
+      unsubscribedSubscribers: unsubscribedSubscribers,
       totalSubscribers: totalSubscribers
     },
     dailySeries: dailySeries,
+    hourlySeries: hourlySeries,
+    subscribers: subscribers.slice(0, 500),
     topPages: topPages,
     referrers: referrers,
     devices: deviceStats,
