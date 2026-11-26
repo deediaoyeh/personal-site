@@ -1,6 +1,6 @@
 {
-  "updatedAt": "2026-11-26T16:18:47Z",
-  "count": 10,
+  "updatedAt": "2026-11-26T22:29:58Z",
+  "count": 11,
   "items": [
     {
       "title": "３小時學習歷程講課內容摘要",
@@ -8,7 +8,7 @@
       "type": "essay",
       "format": "markdown",
       "date": "2026-11-26",
-      "readingTime": "19 min",
+      "readingTime": "15 min",
       "summary": "提供３小時研習內容講述摘要與圖卡",
       "tags": [
         "AI",
@@ -24,7 +24,7 @@
       "type": "essay",
       "format": "markdown",
       "date": "2026-11-26",
-      "readingTime": "18 min",
+      "readingTime": "16 min",
       "summary": "我自己用 Antigravity 打造了一個我個人品牌的網頁，這個文件裡面，以一個沒有基礎的新手來思考，要怎麼快速地可以打造自己的個人媒體網頁",
       "tags": [
         "AI",
@@ -77,6 +77,27 @@
       "issue": 1
     },
     {
+      "title": "《低調走過》雙週電子報 № 02：３小時學習歷程講課內容摘要",
+      "slug": "letter-20261126-2",
+      "type": "letter",
+      "format": "markdown",
+      "date": "2026-11-26",
+      "readingTime": "1 min",
+      "summary": "本期導讀核心長文〈３小時學習歷程講課內容摘要〉，並精選 3 則近期知識卡片與一個留給你反覆推敲的問題。",
+      "tags": [
+        "雙週電子報",
+        "研究整理"
+      ],
+      "links": [
+        "essay-20261126-3",
+        "note-20261126-5",
+        "note-20261125-1",
+        "note-20261125-2"
+      ],
+      "path": "./content/letters/letter-20261126-2.md",
+      "issue": 2
+    },
+    {
       "title": "持續不斷引導與思考",
       "slug": "essay-20261125-1",
       "type": "essay",
@@ -97,7 +118,7 @@
       "type": "essay",
       "format": "markdown",
       "date": "2026-11-25",
-      "readingTime": "5 min",
+      "readingTime": "4 min",
       "summary": "每次上完課都整理一下，作為銜接上次和思考下次的參考",
       "tags": [
         "自主學習"
