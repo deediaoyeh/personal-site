@@ -1,13 +1,13 @@
 /**
- * studio-cloud-client.js — GitHub Pages & Netlify 雲端工作台嚴謹雙重驗證 (2FA) 閘門與 API 代理層
+ * studio-cloud-client.js — 線上雲端工作台嚴謹雙重驗證 (PBKDF2-SHA256 + TOTP 2FA) 與 API 代理層
  *
- * 行為說明：
- * - 在本機環境 (localhost / 127.0.0.1)：不介入，完全交由本機 server.py 雙重驗證與離線直寫處理。
+ * 架構說明：
+ * - 在本機環境 (localhost / 127.0.0.1)：不介入，交由本機 server.py 離線認證與直寫硬碟處理。
  * - 在公開雲端環境 (GitHub Pages / Netlify)：
- *   1. 載入瞬間即鎖定並隱藏整個工作台 DOM，未通過 PBKDF2-SHA256 + TOTP 雙重驗證前絕不開放操作。
- *   2. 攔截所有 /api/studio/* 請求並透明轉發至 https://deediao-studio.netlify.app/api/cloud-studio/*，
- *      自動附上 HMAC-SHA256 JWT (Authorization: Bearer) 與 X-Studio-CSRF 權杖。
- *   3. 憑證僅存於分頁 sessionStorage（關閉分頁即自動清除，且伺服器端強制 2 小時失效）。
+ *   1. 載入瞬間即鎖定並隱藏工作台，未通過雙重驗證前絕不開放操作。
+ *   2. 採用瀏覽器原生 WebCrypto 執行 60 萬次 PBKDF2-HMAC-SHA256 衍生運算，並透過 Google Workspace 雲端中樞
+ *      完成伺服器端 SHA-256 Verifier 常數時間校驗 ＋ RFC 6238 TOTP 六位數動態驗證碼驗證（零月租費、不受 Netlify 建置額度限制）。
+ *   3. 攔截所有 /api/studio/* 請求，自動附上 2 小時效期之 HMAC-SHA256 JWT 與 CSRF 權杖，直接原子讀寫 GitHub 主站與個人雲端硬碟。
  */
 (function () {
   "use strict";
@@ -21,8 +21,9 @@
   }
 
   window.__STUDIO_IS_CLOUD__ = true;
-  const CLOUD_API_BASE = "https://deediao-studio.netlify.app/api/cloud-studio";
-  const SESSION_KEY = "__deediao_cloud_studio_session_v1";
+  const CLOUD_HUB_URL =
+    "https://script.google.com/macros/s/AKfycbwqcOL2pWm9SN0eZB3w8hmg4tKJq929q-6cH4TcwhRppWOWREZYyXmex1FpaZFdiwWS/exec";
+  const SESSION_KEY = "__deediao_cloud_studio_session_v2";
 
   function readSession() {
     try {
@@ -39,8 +40,6 @@
     }
   }
 
-  window.__STUDIO_CLOUD_LOCKED__ = !readSession();
-
   function saveSession(token, csrf, expiresAt) {
     sessionStorage.setItem(SESSION_KEY, JSON.stringify({ token, csrf, expiresAt }));
   }
@@ -49,17 +48,70 @@
     sessionStorage.removeItem(SESSION_KEY);
   }
 
-  // 立即鎖定頁面，避免未驗證前閃現工作台介面
-  document.documentElement.classList.add("cloud-auth-locked");
+  window.__STUDIO_CLOUD_LOCKED__ = !readSession();
+  if (window.__STUDIO_CLOUD_LOCKED__) {
+    document.documentElement.classList.add("cloud-auth-locked");
+  }
 
-  // 攔截 fetch：將 /api/studio/* 與 /api/auth/logout 導向受 2FA 保護之雲端 API
+  function hexToUint8(hex) {
+    const clean = String(hex || "").trim();
+    const out = new Uint8Array(clean.length / 2);
+    for (let i = 0; i < out.length; i++) {
+      out[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+    }
+    return out;
+  }
+
+  function uint8ToHex(bytes) {
+    return Array.from(bytes)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  async function derivePbkdf2Hex(password, saltHex, iterations) {
+    const enc = new TextEncoder();
+    const baseKey = await window.crypto.subtle.importKey(
+      "raw",
+      enc.encode(password),
+      { name: "PBKDF2" },
+      false,
+      ["deriveBits"]
+    );
+    const bits = await window.crypto.subtle.deriveBits(
+      {
+        name: "PBKDF2",
+        salt: hexToUint8(saltHex),
+        iterations: Number(iterations) || 600000,
+        hash: "SHA-256",
+      },
+      baseKey,
+      256
+    );
+    return uint8ToHex(new Uint8Array(bits));
+  }
+
   const origFetch = window.fetch.bind(window);
+
+  async function postHubJson(payload) {
+    const resp = await origFetch(CLOUD_HUB_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) {
+      throw new Error(`雲端中樞連線異常 (${resp.status})`);
+    }
+    return resp.json();
+  }
+
+  // 攔截所有 /api/studio/* 與 /api/auth/logout 請求，轉送至受 2FA 保護之 Google Workspace 雲端中樞
   window.fetch = async function (input, initOpts) {
     const urlStr = typeof input === "string" ? input : input?.url || "";
     const opts = initOpts ? { ...initOpts } : {};
 
     if (urlStr === "/api/auth/logout") {
       clearSession();
+      window.__STUDIO_CLOUD_LOCKED__ = true;
       return new Response(JSON.stringify({ ok: true }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -69,28 +121,63 @@
     if (urlStr.startsWith("/api/studio/")) {
       const sess = readSession();
       if (!sess) {
+        window.__STUDIO_CLOUD_LOCKED__ = true;
         showCloudAuthGate();
-        return new Response(JSON.stringify({ ok: false, authRequired: true, message: "請先通過雲端雙重驗證" }), {
-          status: 401,
+        return new Response(
+          JSON.stringify({ ok: false, authRequired: true, message: "請先通過雲端雙重驗證" }),
+          { status: 401, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      const parsed = new URL(urlStr, window.location.origin);
+      const subPath = parsed.pathname.slice("/api/studio".length) || "/";
+      const query = {};
+      parsed.searchParams.forEach((v, k) => {
+        query[k] = v;
+      });
+
+      const method = (opts.method || "GET").toUpperCase();
+      let reqBody = {};
+      if (method !== "GET" && opts.body) {
+        try {
+          reqBody = typeof opts.body === "string" ? JSON.parse(opts.body) : opts.body;
+        } catch (_) {
+          reqBody = {};
+        }
+      }
+
+      try {
+        const data = await postHubJson({
+          action: "cloud_studio",
+          method,
+          subPath,
+          query,
+          body: reqBody,
+          jwtToken: sess.token,
+          csrfToken: sess.csrf,
+        });
+
+        if (data && data.authRequired) {
+          clearSession();
+          window.__STUDIO_CLOUD_LOCKED__ = true;
+          showCloudAuthGate(data.message || "登入憑證已逾時，請重新通過雙重驗證。");
+          return new Response(JSON.stringify(data), {
+            status: 401,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        const status = data && data.ok === false ? 400 : 200;
+        return new Response(JSON.stringify(data), {
+          status,
           headers: { "Content-Type": "application/json" },
         });
+      } catch (err) {
+        return new Response(
+          JSON.stringify({ ok: false, message: err.message || "雲端 API 請求失敗" }),
+          { status: 502, headers: { "Content-Type": "application/json" } }
+        );
       }
-
-      const targetUrl = CLOUD_API_BASE + urlStr.slice("/api/studio".length);
-      const headers = new Headers(opts.headers || {});
-      headers.set("Authorization", `Bearer ${sess.token}`);
-      const method = (opts.method || "GET").toUpperCase();
-      if (method !== "GET" && sess.csrf) {
-        headers.set("X-Studio-CSRF", sess.csrf);
-      }
-      opts.headers = headers;
-
-      const resp = await origFetch(targetUrl, opts);
-      if (resp.status === 401) {
-        clearSession();
-        showCloudAuthGate("登入憑證已逾時或失效，請重新通過雙重驗證。");
-      }
-      return resp;
     }
 
     return origFetch(input, opts);
@@ -114,7 +201,7 @@
         <span class="cloud-gate-kicker">CLOUD SECURITY GATE · 雲端雙重驗證閘門</span>
         <h1 id="cloud-gate-title" class="cloud-gate-title">書齋雲端編輯工作台</h1>
         <p class="cloud-gate-desc">
-          此工作台直接寫入 GitHub 主站與 Netlify 備份站，受 <strong>PBKDF2-SHA256 ＋ RFC 6238 TOTP 六位數動態驗證碼</strong> 嚴謹保護。
+          此工作台直接連通 GitHub 主站、Google 雲端硬碟與站長點閱儀表板，受 <strong>PBKDF2-SHA256 六十萬次雜湊 ＋ RFC 6238 TOTP 六位數動態驗證碼</strong> 嚴謹保護。
           連續驗證失敗 5 次將自動鎖定 15 分鐘，單次憑證 2 小時自動失效。
         </p>
 
@@ -133,7 +220,7 @@
 
         <div class="cloud-gate-footer" style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
           <a href="./">← 返回公開網站首頁</a>
-          <a href="http://localhost:8788/studio.html">切換至 Mac 本機工作台 (localhost:8788) →</a>
+          <a href="http://localhost:8788/studio.html">切換至 Mac 本機離線工作台 →</a>
         </div>
       </div>
     `;
@@ -141,17 +228,6 @@
 
     const errEl = overlay.querySelector("#cloud-gate-error");
     if (initialErr) errEl.textContent = initialErr;
-
-    // 背景檢查雲端閘門環境變數是否已隨 Netlify 部署生效
-    origFetch(`${CLOUD_API_BASE}/auth/status`)
-      .then((r) => r.json())
-      .then((st) => {
-        if (st && st.configured === false && !errEl.textContent) {
-          errEl.textContent =
-            "提醒：Netlify 雲端閘門因本月免費建置額度已滿尚未重編譯；在額度重置前，請點右下角「切換至 Mac 本機工作台 (localhost:8788)」登入編輯與檢閱點閱儀表板。";
-        }
-      })
-      .catch(() => {});
 
     requestAnimationFrame(() => {
       document.getElementById("cloud-login-pw")?.focus();
@@ -161,24 +237,31 @@
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       errEl.textContent = "";
+      const pw = document.getElementById("cloud-login-pw").value;
+      const code = document.getElementById("cloud-login-2fa").value.trim();
       const btn = overlay.querySelector("#cloud-gate-submit");
       btn.disabled = true;
       btn.textContent = "密碼學雙重驗證中⋯";
 
       try {
-        const res = await origFetch(`${CLOUD_API_BASE}/auth/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            password: document.getElementById("cloud-login-pw").value,
-            secondFactor: document.getElementById("cloud-login-2fa").value,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok || !data.ok) {
-          throw new Error(data.message || "驗證失敗，請確認密碼與 6 位數驗證碼");
+        const saltInfo = await postHubJson({ action: "studio_auth_salt" });
+        if (!saltInfo || !saltInfo.ok || !saltInfo.configured || !saltInfo.saltHex) {
+          throw new Error(saltInfo?.message || "雲端雙重驗證金鑰尚未就緒");
         }
-        saveSession(data.token, data.csrfToken, data.expiresAt);
+
+        const dkHex = await derivePbkdf2Hex(pw, saltInfo.saltHex, saltInfo.iterations || 600000);
+        const loginRes = await postHubJson({
+          action: "studio_auth_login",
+          dkHex,
+          secondFactor: code,
+        });
+
+        if (!loginRes || !loginRes.ok) {
+          throw new Error(loginRes?.message || "主管理密碼或 6 位數驗證碼不正確");
+        }
+
+        saveSession(loginRes.token, loginRes.csrfToken, loginRes.expiresAt);
+        window.__STUDIO_CLOUD_LOCKED__ = false;
         overlay.remove();
         document.documentElement.classList.remove("cloud-auth-locked");
         window.location.reload();
@@ -193,6 +276,7 @@
   document.addEventListener("DOMContentLoaded", () => {
     const sess = readSession();
     if (sess) {
+      window.__STUDIO_CLOUD_LOCKED__ = false;
       document.documentElement.classList.remove("cloud-auth-locked");
       const badge = document.querySelector(".studio-badge");
       if (badge) badge.textContent = "CLOUD STUDIO · 2FA";

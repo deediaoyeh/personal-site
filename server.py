@@ -1284,6 +1284,11 @@ class StudioHandler(SimpleHTTPRequestHandler):
         self._send_json({"ok": False, "message": "未知的 API 路徑"}, HTTPStatus.NOT_FOUND)
 
 
+class ReusableThreadingHTTPServer(ThreadingHTTPServer):
+    allow_reuse_address = True
+    daemon_threads = True
+
+
 def main():
     port = int(os.environ.get("PORT", "8788"))
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
@@ -1295,7 +1300,7 @@ def main():
         write_theme_config(DEFAULT_THEME)
     rebuild_manifest()
 
-    server = ThreadingHTTPServer(("127.0.0.1", port), StudioHandler)
+    server = ReusableThreadingHTTPServer(("127.0.0.1", port), StudioHandler)
     print(f"書齋本機服務已啟動（僅綁定本機 127.0.0.1）：")
     print(f"  • 前台網站預覽：http://localhost:{port}/")
     print(f"  • 受雙重驗證保護之編輯工作台：http://localhost:{port}/studio.html")
