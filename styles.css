@@ -1472,3 +1472,309 @@ a.file-attachment-card:hover {
   color: var(--accent, #6e5039);
   text-decoration: underline;
 }
+
+/* =========================================================================
+   單篇閱讀工具列（複製社群預覽連結、講堂 QR Code、乾淨講義列印）
+   ========================================================================= */
+.article-utility-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--rule, rgba(29, 28, 25, 0.16));
+}
+
+.utility-chip-btn {
+  appearance: none;
+  background: var(--bg-elevated, #faf8f4);
+  border: 1px solid var(--rule-strong, rgba(29, 28, 25, 0.24));
+  color: var(--ink-secondary, #534f46);
+  font-family: inherit;
+  font-size: 0.8rem;
+  padding: 5px 12px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+
+.utility-chip-btn:hover {
+  border-color: var(--accent, #6e5039);
+  color: var(--ink-primary, #1d1c19);
+  background: var(--bg-subtle, #ece7dd);
+}
+
+.utility-chip-btn.is-primary {
+  background: var(--ink-primary, #1d1c19);
+  border-color: var(--ink-primary, #1d1c19);
+  color: var(--bg-paper, #f5f2eb);
+}
+
+.utility-chip-btn.is-primary:hover {
+  opacity: 0.9;
+}
+
+.utility-toast-msg {
+  font-size: 0.78rem;
+  color: var(--accent-moss, #485643);
+  margin-left: 4px;
+}
+
+/* 全文檢索關鍵字標亮 */
+mark.search-hl {
+  background: rgba(110, 80, 57, 0.18);
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+/* 講堂投影 QR Code 對話框 */
+.qr-modal-dialog {
+  width: 100%;
+  max-width: 440px;
+  background: var(--bg-paper, #f5f2eb);
+  border: 1px solid var(--rule-strong, rgba(29, 28, 25, 0.28));
+  padding: 20px 24px 26px;
+}
+
+.qr-modal-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding-top: 12px;
+}
+
+.qr-article-title {
+  font-family: "Newsreader", "Noto Serif TC", Georgia, serif;
+  font-size: 1.2rem;
+  font-weight: 500;
+  line-height: 1.45;
+  margin: 0 0 16px;
+  color: var(--ink-primary, #1d1c19);
+}
+
+.qr-svg-stage {
+  width: 268px;
+  height: 268px;
+  background: #ffffff;
+  border: 1px solid rgba(29, 28, 25, 0.18);
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qr-svg-stage svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.qr-url-caption {
+  font-size: 0.74rem;
+  color: var(--ink-muted, #857f73);
+  word-break: break-all;
+  margin: 12px 0 16px;
+}
+
+.qr-modal-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* =========================================================================
+   安靜不洗版：閱讀共鳴燈 ＋ 私密悄悄話回饋匣
+   ========================================================================= */
+.reader-interaction-box {
+  margin-top: 48px;
+  padding: 22px 24px;
+  background: var(--bg-elevated, #faf8f4);
+  border: 1px solid var(--rule, rgba(29, 28, 25, 0.16));
+}
+
+.interaction-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.interaction-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.interaction-title {
+  font-family: "Newsreader", "Noto Serif TC", Georgia, serif;
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--ink-primary, #1d1c19);
+}
+
+.interaction-sub {
+  font-size: 0.82rem;
+  color: var(--ink-muted, #857f73);
+}
+
+.interaction-buttons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.resonance-btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  background: var(--bg-paper, #f5f2eb);
+  border: 1px solid var(--rule-strong, rgba(29, 28, 25, 0.25));
+  color: var(--ink-primary, #1d1c19);
+  font-family: inherit;
+  font-size: 0.85rem;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.resonance-btn:hover {
+  border-color: var(--accent, #6e5039);
+}
+
+.resonance-btn.is-lit {
+  background: rgba(110, 80, 57, 0.12);
+  border-color: var(--accent, #6e5039);
+  color: var(--accent, #6e5039);
+  font-weight: 500;
+}
+
+.private-feedback-wrap {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px dashed var(--rule, rgba(29, 28, 25, 0.16));
+}
+
+.private-feedback-wrap[hidden] {
+  display: none !important;
+}
+
+.private-feedback-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fb-input,
+.fb-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg-paper, #f5f2eb);
+  border: 1px solid var(--rule-strong, rgba(29, 28, 25, 0.24));
+  color: var(--ink-primary, #1d1c19);
+  font-family: inherit;
+  font-size: 0.9rem;
+  padding: 9px 12px;
+  border-radius: 2px;
+}
+
+.fb-textarea {
+  resize: vertical;
+  min-height: 88px;
+  line-height: 1.65;
+}
+
+.fb-form-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.fb-privacy-note {
+  font-size: 0.78rem;
+  color: var(--ink-muted, #857f73);
+}
+
+.print-only-lecture-head {
+  display: none;
+}
+
+/* =========================================================================
+   紙本講義乾淨列印與另存 PDF 專用排版 (@media print)
+   ========================================================================= */
+@media print {
+  @page {
+    margin: 18mm 16mm;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #111111 !important;
+    font-size: 11pt !important;
+  }
+
+  .site-header,
+  .site-footer,
+  .back-nav-link,
+  .article-utility-bar,
+  .reader-toc,
+  .reader-interaction-box,
+  .newsletter-panel,
+  #reading-progress,
+  #search-modal,
+  #qr-share-modal,
+  .yt-embed-stage {
+    display: none !important;
+  }
+
+  .print-only-lecture-head {
+    display: flex !important;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 9pt;
+    color: #555555;
+    border-bottom: 1px solid #cccccc;
+    padding-bottom: 6pt;
+    margin-bottom: 14pt;
+  }
+
+  .site-shell,
+  .site-main,
+  .reader-layout {
+    display: block !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .prose h2,
+  .prose h3 {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  .prose blockquote,
+  .prose pre,
+  .prose table,
+  .prose figure,
+  .callout-box {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .prose a {
+    color: #111111 !important;
+    border-bottom: none !important;
+    text-decoration: underline;
+  }
+}

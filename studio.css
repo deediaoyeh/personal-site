@@ -1508,6 +1508,29 @@ a.rank-title:hover {
   letter-spacing: 0.04em;
 }
 
+.autodraft-recovery-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  background: rgba(110, 80, 57, 0.11);
+  border-bottom: 1px solid rgba(110, 80, 57, 0.32);
+  font-size: 0.84rem;
+  color: var(--ink-primary, #1d1c19);
+}
+
+.autodraft-recovery-bar[hidden] {
+  display: none !important;
+}
+
+.autodraft-recovery-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 @media (max-width: 960px) {
   .analytics-kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

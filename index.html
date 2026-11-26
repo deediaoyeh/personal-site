@@ -9,6 +9,12 @@
   />
   <title>低調走過 · Field Notes &amp; Essays</title>
   <meta name="description" content="這是一座持續成長的個人知識庫。" />
+  <meta property="og:site_name" content="低調走過 · Field Notes &amp; Essays" />
+  <meta property="og:title" content="低調走過 · Field Notes &amp; Essays" />
+  <meta property="og:description" content="這是一座持續成長的個人知識庫。" />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="https://deediaoyeh.github.io/personal-site/assets/og-card.png" />
+  <meta name="twitter:card" content="summary_large_image" />
   <link rel="alternate" type="application/rss+xml" title="RSS Feed" href="./rss.xml" />
 
   <!-- 字體載入：襯線標題 + 俐落無襯線內文 + 等寬編號（無網路時自動優雅退回系統宋體與黑體） -->
@@ -16,8 +22,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Noto+Sans+TC:wght@300;400;500&family=Noto+Serif+TC:wght@400;500;600&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="./styles.css?v=20261126124810" />
-  <link rel="stylesheet" href="./theme.custom.css?v=20261126124810" />
+  <link rel="stylesheet" href="./styles.css?v=20261126225445" />
+  <link rel="stylesheet" href="./theme.custom.css?v=20261126225445" />
 </head>
 <body>
   <!-- 頂部閱讀進度極細線（僅閱讀單篇文章時顯示） -->
@@ -88,7 +94,27 @@
     </div>
   </div>
 
-  <script src="./site.config.js?v=20261126124810"></script>
-  <script src="./app.js?v=20261126124810"></script>
+  <!-- 研習與講課現場投影專屬 QR Code 對話框 -->
+  <div id="qr-share-modal" class="search-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="qr-modal-heading">
+    <div class="qr-modal-dialog">
+      <div class="search-header">
+        <span class="mono-label">LECTURE &amp; HANDOUT QR · 掃描開啟本篇講義</span>
+        <button type="button" class="text-close-btn" id="close-qr-modal-btn">關閉 ESC</button>
+      </div>
+      <div class="qr-modal-body">
+        <h3 id="qr-modal-heading" class="qr-article-title"></h3>
+        <div id="qr-svg-stage" class="qr-svg-stage" aria-live="polite"></div>
+        <p id="qr-url-caption" class="qr-url-caption mono-label"></p>
+        <div class="qr-modal-actions">
+          <button type="button" id="qr-copy-link-btn" class="utility-chip-btn">🔗 複製分享連結</button>
+          <button type="button" id="qr-download-png-btn" class="utility-chip-btn is-primary">⬇ 下載 QR 圖檔 (PNG)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./site.config.js?v=20261126225445"></script>
+  <script src="./qrcode.js?v=20261126225445"></script>
+  <script src="./app.js?v=20261126225445"></script>
 </body>
 </html>

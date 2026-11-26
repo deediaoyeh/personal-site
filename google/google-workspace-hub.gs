@@ -48,6 +48,8 @@ const HUB_CONFIG = {
 const SHEET_SUBSCRIBERS = "Subscribers";
 const SHEET_ISSUES = "NewsletterDrafts";
 const SHEET_PAGEVIEWS = "PageViews";
+const SHEET_RESONANCE = "Resonance";
+const SHEET_FEEDBACK = "ReaderFeedback";
 
 // ── 密碼學常數時間比對與試算表防公式注入工具 ─────────────────────────────
 function constantTimeEqual(inputStr, secretStr) {
@@ -194,6 +196,20 @@ function setupSheets() {
   } else if (pvSheet.getLastColumn() < 11) {
     pvSheet.getRange("J1:K1").setValues([["停留秒數", "訪問識別碼"]]).setFontWeight("bold");
   }
+
+  let resSheet = ss.getSheetByName(SHEET_RESONANCE);
+  if (!resSheet) {
+    resSheet = ss.insertSheet(SHEET_RESONANCE);
+    resSheet.appendRow(["時間 (ISO)", "日期 (YYYY-MM-DD)", "文章識別碼 (Slug)", "文章標題", "當日匿名訪客雜湊"]);
+    resSheet.getRange("A1:E1").setFontWeight("bold");
+  }
+
+  let fbSheet = ss.getSheetByName(SHEET_FEEDBACK);
+  if (!fbSheet) {
+    fbSheet = ss.insertSheet(SHEET_FEEDBACK);
+    fbSheet.appendRow(["時間 (ISO)", "文章標題", "文章路徑", "讀者稱呼或信箱", "私密回饋內容"]);
+    fbSheet.getRange("A1:E1").setFontWeight("bold");
+  }
 }
 
 /**
@@ -212,7 +228,10 @@ function doPost(e) {
     if (
       (payload.action === "subscribe" ||
         payload.action === "pageview" ||
-        payload.action === "pageview_engagement") &&
+        payload.action === "pageview_engagement" ||
+        payload.action === "get_resonance" ||
+        payload.action === "resonance" ||
+        payload.action === "reader_feedback") &&
       rawBody.length > 50000
     ) {
       return jsonResponse({ ok: false, message: "公開請求內容過大" });
@@ -228,6 +247,18 @@ function doPost(e) {
 
     if (payload.action === "pageview_engagement") {
       return handlePageviewEngagement(payload);
+    }
+
+    if (payload.action === "get_resonance") {
+      return handleGetResonance(payload);
+    }
+
+    if (payload.action === "resonance") {
+      return handleAddResonance(payload);
+    }
+
+    if (payload.action === "reader_feedback") {
+      return handleReaderFeedback(payload);
     }
 
     // ── 雲端編輯工作台雙重驗證 (2FA) 與 GitHub 原子讀寫閘門 ────────────────
@@ -839,6 +870,128 @@ function handlePageviewEngagement(payload) {
 }
 
 /**
+ * 查詢單篇文章之累計閱讀共鳴數（含 25 秒快取加速）
+ */
+function handleGetResonance(payload) {
+  const slug = String(payload.slug || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80);
+  if (!slug) return jsonResponse({ ok: true, count: 0 });
+
+  const cache = CacheService.getScriptCache();
+  const cKey = "res_cnt_" + slug;
+  const cached = cache.get(cKey);
+  if (cached !== null) {
+    return jsonResponse({ ok: true, slug: slug, count: Number(cached) || 0 });
+  }
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_RESONANCE);
+  if (!sheet || sheet.getLastRow() < 2) {
+    cache.put(cKey, "0", 25);
+    return jsonResponse({ ok: true, slug: slug, count: 0 });
+  }
+
+  const vals = sheet.getRange(2, 3, sheet.getLastRow() - 1, 1).getValues();
+  let count = 0;
+  for (let i = 0; i < vals.length; i++) {
+    if (String(vals[i][0] || "").replace(/^'/, "") === slug) count++;
+  }
+  cache.put(cKey, String(count), 25);
+  return jsonResponse({ ok: true, slug: slug, count: count });
+}
+
+/**
+ * 讀者點亮文章共鳴燈（同一匿名訪客同日對同一篇文章僅計一次，防灌水）
+ */
+function handleAddResonance(payload) {
+  const slug = String(payload.slug || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80);
+  if (!slug) return jsonResponse({ ok: false, message: "缺少文章識別碼" });
+
+  const cache = CacheService.getScriptCache();
+  const now = new Date();
+  const tz = Session.getScriptTimeZone() || "Asia/Taipei";
+  const dateStr = Utilities.formatDate(now, tz, "yyyy-MM-dd");
+  const vHash = String(payload.visitorHash || "anon").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 48);
+  const title = String(payload.title || slug).slice(0, 160);
+
+  const rateKey = "res_m_" + Utilities.formatDate(now, "UTC", "yyyyMMddHHmm");
+  const mCnt = Number(cache.get(rateKey) || "0");
+  if (mCnt >= 45) return jsonResponse({ ok: true, throttled: true });
+  cache.put(rateKey, String(mCnt + 1), 70);
+
+  const dedupKey = `res_u_${slug}_${dateStr}_${vHash}`.slice(0, 240);
+  if (cache.get(dedupKey)) {
+    return handleGetResonance({ slug: slug });
+  }
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_RESONANCE);
+  if (sheet && sheet.getLastRow() >= 2) {
+    const scanN = Math.min(200, sheet.getLastRow() - 1);
+    const tail = sheet.getRange(sheet.getLastRow() - scanN + 1, 2, scanN, 4).getValues();
+    for (let i = tail.length - 1; i >= 0; i--) {
+      const rDate = String(tail[i][0] || "").replace(/^'/, "").slice(0, 10);
+      const rSlug = String(tail[i][1] || "").replace(/^'/, "");
+      const rHash = String(tail[i][3] || "").replace(/^'/, "");
+      if (rDate === dateStr && rSlug === slug && rHash === vHash) {
+        cache.put(dedupKey, "1", 21600);
+        return handleGetResonance({ slug: slug });
+      }
+    }
+  }
+
+  appendSafeTextRow(
+    sheet,
+    [now.toISOString(), dateStr, slug, title, vHash],
+    [40, 16, 80, 160, 48]
+  );
+  cache.put(dedupKey, "1", 21600);
+  cache.remove("res_cnt_" + slug);
+  return handleGetResonance({ slug: slug });
+}
+
+/**
+ * 接收讀者私密悄悄話回饋（含蜜罐、最小填寫秒數、速率限制與防公式注入保護，不公開展示）
+ */
+function handleReaderFeedback(payload) {
+  if (payload.website && String(payload.website).trim() !== "") {
+    return jsonResponse({ ok: true });
+  }
+  const elapsedMs = Number(payload.elapsedMs || 0);
+  if (elapsedMs > 0 && elapsedMs < 900) {
+    return jsonResponse({ ok: true });
+  }
+
+  const message = String(payload.message || "").trim();
+  if (!message || message.length < 2) {
+    return jsonResponse({ ok: false, message: "請輸入想傳達的回饋內容" });
+  }
+  if (message.length > 1500) {
+    return jsonResponse({ ok: false, message: "回饋內容請精簡於 1,500 字以內" });
+  }
+
+  const cache = CacheService.getScriptCache();
+  const now = new Date();
+  const minBucket = "fb_m_" + Utilities.formatDate(now, "UTC", "yyyyMMddHHmm");
+  const mCount = Number(cache.get(minBucket) || "0");
+  if (mCount >= 6) {
+    return jsonResponse({ ok: false, message: "目前傳送較為頻繁，請稍候一分鐘再試。" });
+  }
+  cache.put(minBucket, String(mCount + 1), 70);
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_FEEDBACK);
+  appendSafeTextRow(
+    sheet,
+    [
+      now.toISOString(),
+      String(payload.title || "未命名文章"),
+      String(payload.route || "#/"),
+      String(payload.sender || "匿名讀者"),
+      message
+    ],
+    [40, 160, 160, 120, 1500]
+  );
+  return jsonResponse({ ok: true, message: "✓ 已私密送達作者信箱匣，謝謝你的閱讀與回饋！" });
+}
+
+/**
  * 彙整站長專屬私密點閱儀表板數據（已通過 ANALYTICS_READ_KEY 常數時間驗證）
  */
 function handleAnalyticsSummary() {
@@ -1038,9 +1191,42 @@ function handleAnalyticsSummary() {
     visitors: Object.keys(dailyMap[k].visitorSet).length
   }));
 
+  const resSheet = ss.getSheetByName(SHEET_RESONANCE);
+  let totalResonances = 0;
+  const resonanceBySlug = {};
+  if (resSheet && resSheet.getLastRow() >= 2) {
+    const rVals = resSheet.getRange(2, 3, resSheet.getLastRow() - 1, 1).getValues();
+    for (let m = 0; m < rVals.length; m++) {
+      const sKey = unquote(rVals[m][0]).trim();
+      if (sKey) {
+        totalResonances++;
+        resonanceBySlug[sKey] = (resonanceBySlug[sKey] || 0) + 1;
+      }
+    }
+  }
+
+  const fbSheet = ss.getSheetByName(SHEET_FEEDBACK);
+  let totalFeedbacks = 0;
+  const readerFeedbacks = [];
+  if (fbSheet && fbSheet.getLastRow() >= 2) {
+    const fRows = fbSheet.getDataRange().getValues();
+    totalFeedbacks = Math.max(0, fRows.length - 1);
+    for (let f = fRows.length - 1; f >= 1 && readerFeedbacks.length < 50; f--) {
+      const fr = fRows[f];
+      readerFeedbacks.push({
+        timestamp: fr[0] instanceof Date ? fr[0].toISOString() : unquote(fr[0]),
+        title: unquote(fr[1]) || "文章回饋",
+        route: unquote(fr[2]) || "#/",
+        sender: unquote(fr[3]) || "匿名讀者",
+        message: unquote(fr[4]) || ""
+      });
+    }
+  }
+
   const topPages = Object.keys(pageStats)
     .map((k) => {
       const ps = pageStats[k];
+      const slugTail = String(ps.route || "").split("/").filter(Boolean).pop() || "";
       return {
         route: ps.route,
         title: ps.title,
@@ -1048,7 +1234,8 @@ function handleAnalyticsSummary() {
         views: ps.views,
         visitors: Object.keys(ps.visitorSet).length,
         totalDwellSec: ps.dwellSum,
-        avgDwellSec: ps.dwellCnt > 0 ? Math.round(ps.dwellSum / ps.dwellCnt) : 0
+        avgDwellSec: ps.dwellCnt > 0 ? Math.round(ps.dwellSum / ps.dwellCnt) : 0,
+        resonances: resonanceBySlug[slugTail] || 0
       };
     })
     .sort((a, b) => b.views - a.views)
@@ -1075,11 +1262,14 @@ function handleAnalyticsSummary() {
       activeSubscribers: activeSubscribers,
       pendingSubscribers: pendingSubscribers,
       unsubscribedSubscribers: unsubscribedSubscribers,
-      totalSubscribers: totalSubscribers
+      totalSubscribers: totalSubscribers,
+      totalResonances: totalResonances,
+      totalFeedbacks: totalFeedbacks
     },
     dailySeries: dailySeries,
     hourlySeries: hourlySeries,
     subscribers: subscribers.slice(0, 500),
+    readerFeedbacks: readerFeedbacks,
     topPages: topPages,
     referrers: referrers,
     devices: deviceStats,
@@ -1483,6 +1673,15 @@ function ghBuildUpdatedManifest(overrideItem, deletedPath) {
       const body = parsed.body;
       const slug = meta.slug || fname.replace(/\.md$/i, "");
       const cleanChars = body.replace(/[#*>`_\-\[\]\(\)\s]/g, "").length;
+      const plainSearch = body
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/https?:\/\/\S+/g, " ")
+        .replace(/[#*>`~_\-\[\]\(\)|]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 5000);
       const entry = {
         title: meta.title || slug,
         slug: slug,
@@ -1499,7 +1698,8 @@ function ghBuildUpdatedManifest(overrideItem, deletedPath) {
           .split(/[,，、]+/)
           .map((s) => s.trim())
           .filter(Boolean),
-        path: `./${fullRel}`
+        path: `./${fullRel}`,
+        searchText: plainSearch
       };
       if (meta.stage) entry.stage = meta.stage;
       if (meta.noteCode) entry.noteCode = meta.noteCode;

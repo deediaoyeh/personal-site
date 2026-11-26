@@ -951,8 +951,16 @@
     const backLabel = type === "essay" ? "← 返回長文列表" : type === "note" ? "← 返回知識筆記" : "← 返回電子報歸檔";
 
     const showToc = headings.length >= 2 && type !== "note";
+    const shareUrl = buildShareUrlForItem(item);
+    document.title = `${item.title} · ${CONFIG?.brand?.name || "低調走過"}`;
+    const resonatedBefore = localStorage.getItem(`deediao_resonated_${item.slug}`) === "1";
 
     container.innerHTML = `
+      <div class="print-only-lecture-head mono-label">
+        <span>${escapeHtml(CONFIG?.brand?.studioTitle || CONFIG?.brand?.name || "低調走過")} · 課程與研究講義</span>
+        <span>${escapeHtml(shareUrl)}</span>
+      </div>
+
       <a href="${backRoute}" class="back-nav-link">${backLabel}</a>
 
       <div class="reader-layout ${showToc ? "" : "is-single-col"}">
@@ -990,6 +998,12 @@
                   </div>`
                 : ""
             }
+            <div class="article-utility-bar" aria-label="分享與講堂講義工具">
+              <button type="button" class="utility-chip-btn" id="btn-copy-share-link" title="複製帶有文章標題與摘要預覽卡的專屬分享網址（適合貼至 LINE / FB）">🔗 複製分享連結</button>
+              <button type="button" class="utility-chip-btn" id="btn-open-lecture-qr" title="放大顯示本篇專屬 QR Code，供講課投影掃描或下載圖檔">📱 講堂 QR Code</button>
+              <button type="button" class="utility-chip-btn" id="btn-print-handout" title="隱藏網站選單，以乾淨紙本講義格式列印或另存 PDF">🖨️ 列印講義 / PDF</button>
+              <span id="article-utility-toast" class="utility-toast-msg mono-label" aria-live="polite"></span>
+            </div>
           </header>
 
           <div class="prose" id="article-prose">
@@ -1019,7 +1033,36 @@
               : ""
           }
 
-          <div style="margin-top: 56px;">
+          <section class="reader-interaction-box" aria-label="閱讀共鳴與私密回饋">
+            <div class="interaction-top-row">
+              <div class="interaction-prompt">
+                <div class="interaction-title">這篇文字對你有啟發或幫助嗎？</div>
+                <div class="interaction-sub" id="resonance-count-label">${resonatedBefore ? "謝謝你為這篇文章點亮過共鳴燈" : "安靜點亮一盞閱讀燈，或寫幾句悄悄話給作者"}</div>
+              </div>
+              <div class="interaction-buttons">
+                <button type="button" class="resonance-btn ${resonatedBefore ? "is-lit" : ""}" id="btn-article-resonance">
+                  <span id="resonance-icon">${resonatedBefore ? "✦" : "🕯️"}</span>
+                  <span id="resonance-btn-text">${resonatedBefore ? "已點亮共鳴" : "點亮閱讀共鳴"}</span>
+                  <span class="mono-label" id="resonance-num-badge"></span>
+                </button>
+                <button type="button" class="utility-chip-btn" id="btn-toggle-private-fb">✉️ 留悄悄話給作者</button>
+              </div>
+            </div>
+
+            <div class="private-feedback-wrap" id="private-feedback-wrap" hidden>
+              <form class="private-feedback-form" id="private-feedback-form">
+                <input type="text" name="website" id="fb-hp-website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px;opacity:0;pointer-events:none;" aria-hidden="true" />
+                <input type="text" class="fb-input" id="fb-sender-input" maxlength="100" placeholder="你的稱呼或 Email（選填，若希望收到回信可留下信箱）" />
+                <textarea class="fb-textarea" id="fb-message-input" maxlength="1500" required placeholder="寫下讀完的想法、課堂提問或補充建議⋯（此訊息將直接私密傳送至作者後台，不會公開顯示於網頁上）"></textarea>
+                <div class="fb-form-foot">
+                  <span class="fb-privacy-note" id="fb-status-msg">🔒 僅作者本人可見，不公開洗版</span>
+                  <button type="submit" class="utility-chip-btn is-primary" id="fb-submit-btn">送出私密回饋</button>
+                </div>
+              </form>
+            </div>
+          </section>
+
+          <div style="margin-top: 40px;">
             ${renderNewsletterBoxHtml(`detail-${slug}`)}
           </div>
         </article>
@@ -1075,6 +1118,171 @@
         }
       });
     });
+
+    bindArticleUtilitiesAndInteractions(container, item, shareUrl);
+  }
+
+  function buildShareUrlForItem(item) {
+    const baseDir = window.location.origin + window.location.pathname.replace(/\/index\.html$/i, "/").replace(/\/?$/, "/");
+    return `${baseDir}s/${encodeURIComponent(item.slug)}.html`;
+  }
+
+  function bindArticleUtilitiesAndInteractions(container, item, shareUrl) {
+    const toastEl = container.querySelector("#article-utility-toast");
+    const showToast = (msg) => {
+      if (!toastEl) return;
+      toastEl.textContent = msg;
+      setTimeout(() => {
+        if (toastEl.textContent === msg) toastEl.textContent = "";
+      }, 3600);
+    };
+
+    container.querySelector("#btn-copy-share-link")?.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        showToast("✓ 已複製專屬預覽連結（貼至 LINE / FB 自動顯示文章卡片）");
+      } catch (_) {
+        window.prompt("請複製以下專屬分享連結：", shareUrl);
+      }
+    });
+
+    container.querySelector("#btn-print-handout")?.addEventListener("click", () => {
+      window.print();
+    });
+
+    container.querySelector("#btn-open-lecture-qr")?.addEventListener("click", () => {
+      openLectureQrModal(item.title, shareUrl, item.slug);
+    });
+
+    // 閱讀共鳴燈與私密回饋串接
+    const scriptUrl = (CONFIG?.newsletter?.googleScriptUrl || "").trim();
+    const resBtn = container.querySelector("#btn-article-resonance");
+    const resIcon = container.querySelector("#resonance-icon");
+    const resText = container.querySelector("#resonance-btn-text");
+    const resBadge = container.querySelector("#resonance-num-badge");
+    const resSubLabel = container.querySelector("#resonance-count-label");
+
+    const updateResonanceCountUI = (cnt) => {
+      const n = Number(cnt || 0);
+      if (resBadge) resBadge.textContent = n > 0 ? `· ${n}` : "";
+      if (resSubLabel && n > 0) {
+        resSubLabel.textContent = `已有 ${n} 位讀者為這篇文章點亮共鳴燈`;
+      }
+    };
+
+    if (scriptUrl) {
+      fetch(scriptUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "get_resonance", slug: item.slug })
+      })
+        .then((r) => r.json())
+        .then((d) => {
+          if (d && d.ok) updateResonanceCountUI(d.count || 0);
+        })
+        .catch(() => {});
+    }
+
+    resBtn?.addEventListener("click", async () => {
+      const storageKey = `deediao_resonated_${item.slug}`;
+      if (localStorage.getItem(storageKey) === "1") {
+        showToast("✦ 你已經為這篇文章點亮過共鳴燈了");
+        return;
+      }
+      localStorage.setItem(storageKey, "1");
+      resBtn.classList.add("is-lit");
+      if (resIcon) resIcon.textContent = "✦";
+      if (resText) resText.textContent = "已點亮共鳴";
+
+      if (!scriptUrl) return;
+      try {
+        const resp = await fetch(scriptUrl, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({
+            action: "resonance",
+            slug: item.slug,
+            title: item.title,
+            visitorHash: getAnonVisitorHash()
+          })
+        });
+        const data = await resp.json();
+        if (data && data.ok) updateResonanceCountUI(data.count || 1);
+      } catch (_) {}
+    });
+
+    const fbWrap = container.querySelector("#private-feedback-wrap");
+    const fbToggleBtn = container.querySelector("#btn-toggle-private-fb");
+    const fbForm = container.querySelector("#private-feedback-form");
+    let fbOpenedAt = Date.now();
+
+    fbToggleBtn?.addEventListener("click", () => {
+      if (!fbWrap) return;
+      fbWrap.hidden = !fbWrap.hidden;
+      if (!fbWrap.hidden) {
+        fbOpenedAt = Date.now();
+        container.querySelector("#fb-message-input")?.focus();
+      }
+    });
+
+    fbForm?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const sender = container.querySelector("#fb-sender-input")?.value.trim() || "";
+      const message = container.querySelector("#fb-message-input")?.value.trim() || "";
+      const hp = container.querySelector("#fb-hp-website")?.value || "";
+      const statusEl = container.querySelector("#fb-status-msg");
+      const submitBtn = container.querySelector("#fb-submit-btn");
+      if (!message) return;
+
+      if (!scriptUrl) {
+        if (statusEl) statusEl.textContent = "目前為離線預覽模式，連上雲端後台後即可傳送回饋。";
+        return;
+      }
+
+      if (submitBtn) submitBtn.disabled = true;
+      if (statusEl) statusEl.textContent = "正在安全傳送至作者信箱匣⋯";
+      try {
+        const routePrefix = item.type === "essay" ? "essays" : item.type === "note" ? "notes" : "letters";
+        const resp = await fetch(scriptUrl, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({
+            action: "reader_feedback",
+            slug: item.slug,
+            title: item.title,
+            route: `#/${routePrefix}/${item.slug}`,
+            sender,
+            message,
+            website: hp,
+            elapsedMs: Date.now() - fbOpenedAt
+          })
+        });
+        const data = await resp.json();
+        if (!data.ok) throw new Error(data.message || "傳送失敗");
+        if (statusEl) statusEl.textContent = data.message || "✓ 已私密送達作者信箱匣，謝謝你的回饋！";
+        container.querySelector("#fb-message-input").value = "";
+      } catch (err) {
+        if (statusEl) statusEl.textContent = `傳送失敗：${err.message}`;
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
+      }
+    });
+  }
+
+  let currentQrContext = { title: "", url: "", slug: "article", svgMarkup: "" };
+  function openLectureQrModal(title, url, slug) {
+    const modal = document.getElementById("qr-share-modal");
+    const heading = document.getElementById("qr-modal-heading");
+    const stage = document.getElementById("qr-svg-stage");
+    const caption = document.getElementById("qr-url-caption");
+    if (!modal || !stage || !window.SimpleQR) return;
+
+    const svgMarkup = window.SimpleQR.toSvg(url, { margin: 3, fg: "#1d1c19", bg: "#ffffff" });
+    currentQrContext = { title, url, slug: slug || "article", svgMarkup };
+    if (heading) heading.textContent = title;
+    stage.innerHTML = svgMarkup;
+    if (caption) caption.textContent = url;
+    modal.hidden = false;
   }
 
   function findConnections(currentItem, currentBody) {
@@ -1618,12 +1826,60 @@
     });
 
     window.addEventListener("keydown", (e) => {
+      const qrModal = document.getElementById("qr-share-modal");
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         modal.hidden ? openSearch() : closeSearch();
-      } else if (e.key === "Escape" && !modal.hidden) {
-        closeSearch();
+      } else if (e.key === "Escape") {
+        if (!modal.hidden) closeSearch();
+        if (qrModal && !qrModal.hidden) qrModal.hidden = true;
       }
+    });
+
+    // 講堂 QR Code 對話框事件綁定
+    const qrModal = document.getElementById("qr-share-modal");
+    document.getElementById("close-qr-modal-btn")?.addEventListener("click", () => {
+      if (qrModal) qrModal.hidden = true;
+    });
+    qrModal?.addEventListener("click", (e) => {
+      if (e.target === qrModal) qrModal.hidden = true;
+    });
+    document.getElementById("qr-copy-link-btn")?.addEventListener("click", async () => {
+      if (!currentQrContext.url) return;
+      try {
+        await navigator.clipboard.writeText(currentQrContext.url);
+        const cap = document.getElementById("qr-url-caption");
+        if (cap) cap.textContent = "✓ 已複製分享連結至剪貼簿！";
+      } catch (_) {}
+    });
+    document.getElementById("qr-download-png-btn")?.addEventListener("click", () => {
+      if (!currentQrContext.svgMarkup) return;
+      const svgBlob = new Blob([currentQrContext.svgMarkup], { type: "image/svg+xml;charset=utf-8" });
+      const blobUrl = URL.createObjectURL(svgBlob);
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 1024;
+        canvas.height = 1024;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, 1024, 1024);
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(img, 0, 0, 1024, 1024);
+        URL.revokeObjectURL(blobUrl);
+        canvas.toBlob((pngBlob) => {
+          if (!pngBlob) return;
+          const dlUrl = URL.createObjectURL(pngBlob);
+          const a = document.createElement("a");
+          a.href = dlUrl;
+          a.download = `qr-${currentQrContext.slug}.png`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(dlUrl), 1000);
+        }, "image/png");
+      };
+      img.src = blobUrl;
     });
 
     input.addEventListener("input", () => {
@@ -1631,32 +1887,72 @@
     });
   }
 
+  function highlightMatches(rawStr, terms) {
+    let safe = escapeHtml(rawStr || "");
+    if (!terms.length) return safe;
+    const escapedTerms = terms
+      .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .filter(Boolean);
+    if (!escapedTerms.length) return safe;
+    const re = new RegExp(`(${escapedTerms.join("|")})`, "gi");
+    return safe.replace(re, '<mark class="search-hl">$1</mark>');
+  }
+
+  function buildBodySnippet(item, terms) {
+    const body = item.searchText || "";
+    if (!terms.length || !body) return escapeHtml(item.summary || "");
+    const lowerBody = body.toLowerCase();
+    let hitPos = -1;
+    for (const t of terms) {
+      const idx = lowerBody.indexOf(t);
+      if (idx >= 0) {
+        hitPos = idx;
+        break;
+      }
+    }
+    if (hitPos === -1) {
+      return highlightMatches(item.summary || body.slice(0, 90), terms);
+    }
+    const start = Math.max(0, hitPos - 28);
+    const end = Math.min(body.length, hitPos + 78);
+    const prefix = start > 0 ? "⋯" : "";
+    const suffix = end < body.length ? "⋯" : "";
+    return prefix + highlightMatches(body.slice(start, end), terms) + suffix;
+  }
+
   function renderSearchResults(query) {
     const resultsEl = document.getElementById("search-results");
     if (!state.manifest) return;
 
     const items = state.manifest.items;
-    const q = query.toLowerCase();
-    const matched = !q
+    const terms = query
+      .toLowerCase()
+      .split(/\s+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const matched = !terms.length
       ? items.slice(0, 6)
       : items.filter((item) => {
-          const hay = [item.title, item.summary, ...(item.tags || [])].join(" ").toLowerCase();
-          return hay.includes(q);
+          const hay = [item.title, item.summary, ...(item.tags || []), item.searchText || ""].join(" ").toLowerCase();
+          return terms.every((t) => hay.includes(t));
         });
 
     if (matched.length === 0) {
-      resultsEl.innerHTML = `<div style="padding:20px 4px; color:var(--ink-muted); font-size:0.9rem;">沒有找到符合「${escapeHtml(query)}」的館藏內容。</div>`;
+      resultsEl.innerHTML = `<div style="padding:20px 4px; color:var(--ink-muted); font-size:0.9rem;">沒有找到符合「${escapeHtml(query)}」的標題或內文段落。</div>`;
       return;
     }
 
     resultsEl.innerHTML = matched
+      .slice(0, 20)
       .map((item) => {
         const prefix = item.type === "essay" ? "essays" : item.type === "note" ? "notes" : "letters";
+        const tagLine = (item.tags || []).length ? ` · #${(item.tags || []).join(" #")}` : "";
         return `
           <a href="#/${prefix}/${encodeURIComponent(item.slug)}" class="search-hit" data-search-hit>
-            <div class="search-hit-meta mono-label">${escapeHtml(TYPE_LABELS[item.type])} · ${escapeHtml(formatDateDot(item.date))}</div>
-            <div class="search-hit-title">${escapeHtml(item.title)}</div>
-            <div class="search-hit-desc">${escapeHtml(item.summary)}</div>
+            <div class="search-hit-meta mono-label">${escapeHtml(TYPE_LABELS[item.type])} · ${escapeHtml(formatDateDot(item.date))}${escapeHtml(tagLine)}</div>
+            <div class="search-hit-title">${highlightMatches(item.title, terms)}</div>
+            <div class="search-hit-desc">${buildBodySnippet(item, terms)}</div>
           </a>
         `;
       })

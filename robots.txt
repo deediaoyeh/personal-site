@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Disallow: /studio.html
+Sitemap: https://deediaoyeh.github.io/personal-site/sitemap.xml

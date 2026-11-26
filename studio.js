@@ -115,6 +115,7 @@
     bindHtmlPageEditorEvents();
     bindConfigAndThemeEvents();
     bindGlobalShortcuts();
+    bindAutoDraftProtection();
 
     try {
       const res = await fetch("/api/studio/bootstrap");
@@ -145,9 +146,146 @@
       if (state.webFiles.length > 0) {
         await selectWebFile(state.webFiles[0].path);
       }
+      checkAutoDraftRecovery(true);
     } catch (err) {
       setStatus("無法連接本機編輯服務 — 請執行 python3 server.py", "is-dirty");
     }
+  }
+
+  // =========================================================================
+  // 寫作防呆：每 3 秒自動暫存草稿至瀏覽器 localStorage ＋ 誤關分頁提醒
+  // =========================================================================
+  const AUTODRAFT_KEY = "__deediao_studio_autodraft_v1";
+  let autoDraftTimer = null;
+
+  function collectCurrentDraftSnapshot() {
+    const bodyVal =
+      state.editorMode === "wysiwyg"
+        ? document.getElementById("doc-wysiwyg")?.innerHTML || ""
+        : document.getElementById("doc-body")?.value || "";
+    return {
+      savedAt: new Date().toISOString(),
+      originalSlug: state.currentDoc.originalSlug || "",
+      originalType: state.currentDoc.originalType || "",
+      isNew: Boolean(state.currentDoc.isNew),
+      docFormat: state.docFormat || "markdown",
+      editorMode: state.editorMode || "markdown",
+      title: document.getElementById("doc-title")?.value || "",
+      type: document.getElementById("doc-type")?.value || "essay",
+      slug: document.getElementById("doc-slug")?.value || "",
+      date: document.getElementById("doc-date")?.value || todayStr(),
+      tags: document.getElementById("doc-tags")?.value || "",
+      stage: document.getElementById("doc-stage")?.value || "seedling",
+      noteCode: document.getElementById("doc-notecode")?.value || "",
+      issue: document.getElementById("doc-issue")?.value || "",
+      summary: document.getElementById("doc-summary")?.value || "",
+      body: bodyVal
+    };
+  }
+
+  function persistAutoDraftNow() {
+    if (!state.dirtyScopes.content) return;
+    try {
+      const snap = collectCurrentDraftSnapshot();
+      if (!snap.title.trim() && !snap.body.trim()) return;
+      localStorage.setItem(AUTODRAFT_KEY, JSON.stringify(snap));
+      const tStr = new Date().toLocaleTimeString("zh-TW", { hour12: false });
+      setStatus(`尚有未儲存修改（已於 ${tStr} 自動暫存草稿 · 按 ⌘S 正式寫入網站）`, "is-dirty");
+    } catch (_) {}
+  }
+
+  function clearAutoDraft() {
+    clearTimeout(autoDraftTimer);
+    try {
+      localStorage.removeItem(AUTODRAFT_KEY);
+    } catch (_) {}
+    const bar = document.getElementById("autodraft-recovery-bar");
+    if (bar) bar.hidden = true;
+  }
+
+  function checkAutoDraftRecovery(onStartup = false) {
+    const bar = document.getElementById("autodraft-recovery-bar");
+    const textEl = document.getElementById("autodraft-recovery-text");
+    if (!bar || !textEl) return;
+    try {
+      const raw = localStorage.getItem(AUTODRAFT_KEY);
+      if (!raw) {
+        bar.hidden = true;
+        return;
+      }
+      const snap = JSON.parse(raw);
+      const curBody = document.getElementById("doc-body")?.value || "";
+      const curTitle = document.getElementById("doc-title")?.value || "";
+      const sameDoc =
+        onStartup ||
+        snap.slug === (document.getElementById("doc-slug")?.value || "") ||
+        (snap.originalSlug && snap.originalSlug === state.currentDoc.originalSlug);
+
+      if (!sameDoc || (snap.body === curBody && snap.title === curTitle)) {
+        bar.hidden = true;
+        return;
+      }
+
+      const d = new Date(snap.savedAt);
+      const timeLabel = isNaN(d.getTime())
+        ? ""
+        : `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      const titlePreview = snap.title.trim() || snap.slug || "未命名草稿";
+      textEl.textContent = `🛡️ 偵測到尚未儲存的自動暫存草稿：「${titlePreview}」（暫存於 ${timeLabel}）`;
+      bar.hidden = false;
+    } catch (_) {
+      bar.hidden = true;
+    }
+  }
+
+  function bindAutoDraftProtection() {
+    document.getElementById("btn-restore-autodraft")?.addEventListener("click", () => {
+      try {
+        const raw = localStorage.getItem(AUTODRAFT_KEY);
+        if (!raw) return;
+        const snap = JSON.parse(raw);
+        state.currentDoc = {
+          originalSlug: snap.originalSlug || "",
+          originalType: snap.originalType || "",
+          isNew: Boolean(snap.isNew)
+        };
+        state.docFormat = snap.docFormat || "markdown";
+        document.getElementById("doc-title").value = snap.title || "";
+        document.getElementById("doc-type").value = snap.type || "essay";
+        document.getElementById("doc-slug").value = snap.slug || "";
+        document.getElementById("doc-date").value = snap.date || todayStr();
+        document.getElementById("doc-tags").value = snap.tags || "";
+        document.getElementById("doc-stage").value = snap.stage || "seedling";
+        document.getElementById("doc-notecode").value = snap.noteCode || "";
+        document.getElementById("doc-issue").value = snap.issue || "";
+        document.getElementById("doc-summary").value = snap.summary || "";
+        document.getElementById("doc-body").value = snap.body || "";
+        document.getElementById("doc-wysiwyg").innerHTML =
+          state.docFormat === "html" ? snap.body || "<p><br></p>" : simplePreviewMarkdown(snap.body || "");
+
+        applyEditorModeUI(snap.editorMode || (state.docFormat === "html" ? "wysiwyg" : "markdown"), false);
+        toggleTypeSpecificFields(snap.type || "essay");
+        renderTagSuggestions();
+        renderLiveContentPreview();
+        state.dirty = true;
+        state.dirtyScopes.content = true;
+        document.getElementById("autodraft-recovery-bar").hidden = true;
+        setStatus("✓ 已還原上次自動暫存的草稿 — 確認無誤後請按 ⌘S 正式儲存", "is-dirty");
+      } catch (_) {}
+    });
+
+    document.getElementById("btn-discard-autodraft")?.addEventListener("click", () => {
+      clearAutoDraft();
+      setStatus("已捨棄本機暫存草稿");
+    });
+
+    window.addEventListener("beforeunload", (e) => {
+      if (state.dirty) {
+        persistAutoDraftNow();
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    });
   }
 
   function setStatus(msg, cls = "") {
@@ -169,6 +307,10 @@
         : "config");
     state.dirtyScopes[scope] = true;
     setStatus("尚有未儲存的修改（按 ⌘S 儲存全部分頁變更）", "is-dirty");
+    if (scope === "content") {
+      clearTimeout(autoDraftTimer);
+      autoDraftTimer = setTimeout(persistAutoDraftNow, 3000);
+    }
   }
 
   function updateGitBadge(gitInfo) {
@@ -1389,6 +1531,7 @@
         document.getElementById("doc-slug").value = data.slug;
         state.manifest = data.manifest;
         state.dirtyScopes.content = false;
+        clearAutoDraft();
         updateGitBadge(data.git);
         renderSidebarList();
         populateWikilinkPicker();

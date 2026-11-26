@@ -190,15 +190,91 @@
     }
   }
 
+  async function compressImageIfBeneficial(file) {
+    const type = (file.type || "").toLowerCase();
+    // 不壓縮 SVG 向量圖與 GIF 動圖；小於 160 KB 的小圖亦保留原檔
+    if (!type.startsWith("image/") || type.includes("svg") || type.includes("gif") || file.size < 160 * 1024) {
+      return { file, savedBytes: 0, originalBytes: file.size };
+    }
+
+    return new Promise((resolve) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const maxEdge = 1920;
+        let w = img.naturalWidth || img.width;
+        let h = img.naturalHeight || img.height;
+        if (w <= 0 || h <= 0) {
+          resolve({ file, savedBytes: 0, originalBytes: file.size });
+          return;
+        }
+        if (w > maxEdge || h > maxEdge) {
+          const ratio = Math.min(maxEdge / w, maxEdge / h);
+          w = Math.round(w * ratio);
+          h = Math.round(h * ratio);
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, 0, 0, w, h);
+
+        const tryEncode = (mime, ext, quality, fallbackCb) => {
+          canvas.toBlob(
+            (blob) => {
+              if (!blob || blob.size >= file.size * 0.92) {
+                if (fallbackCb) fallbackCb();
+                else resolve({ file, savedBytes: 0, originalBytes: file.size });
+                return;
+              }
+              const stem = file.name.replace(/\.[^.]+$/, "") || "image";
+              const slimFile = new File([blob], `${stem}.${ext}`, { type: mime });
+              resolve({
+                file: slimFile,
+                savedBytes: Math.max(0, file.size - slimFile.size),
+                originalBytes: file.size
+              });
+            },
+            mime,
+            quality
+          );
+        };
+
+        tryEncode("image/webp", "webp", 0.84, () => {
+          tryEncode("image/jpeg", "jpg", 0.85, null);
+        });
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve({ file, savedBytes: 0, originalBytes: file.size });
+      };
+      img.src = url;
+    });
+  }
+
+  function fmtKbMb(bytes) {
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  }
+
   async function uploadAndInsertFiles(files, targetScope) {
     const b = bridge();
     if (!b) return;
 
-    b.setStatus(`正在上傳 ${files.length} 個檔案至網站媒體櫃⋯`);
+    b.setStatus(`正在最佳化並上傳 ${files.length} 個檔案至網站媒體櫃⋯`);
     let okCount = 0;
+    let totalOriginal = 0;
+    let totalSaved = 0;
 
-    for (const file of files) {
+    for (const rawFile of files) {
       try {
+        const { file, savedBytes, originalBytes } = await compressImageIfBeneficial(rawFile);
+        totalOriginal += originalBytes;
+        totalSaved += savedBytes;
         const base64 = await readFileAsBase64(file);
         const res = await fetch("/api/studio/upload", {
           method: "POST",
@@ -223,7 +299,15 @@
       }
     }
 
-    b.setStatus(`✓ 已加入 ${okCount} 個照片／檔案（按 ⌘S 儲存文章或網頁）`, "is-saved");
+    if (totalSaved > 20 * 1024) {
+      const pct = Math.round((totalSaved / Math.max(1, totalOriginal)) * 100);
+      b.setStatus(
+        `✓ 已自動瘦身圖片（${fmtKbMb(totalOriginal)} → ${fmtKbMb(totalOriginal - totalSaved)}，節省 ${pct}%）並插入 ${okCount} 個檔案`,
+        "is-saved"
+      );
+    } else {
+      b.setStatus(`✓ 已加入 ${okCount} 個照片／檔案（按 ⌘S 儲存文章或網頁）`, "is-saved");
+    }
   }
 
   function readFileAsBase64(file) {

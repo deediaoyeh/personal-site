@@ -235,6 +235,7 @@
     renderTopPages(data.topPages || [], tot.totalViews || 0);
     renderReferrers(data.referrers || [], tot.totalViews || 0);
     renderDevices(data.devices || {}, tot.totalViews || 0);
+    renderFeedbacksSection(data.readerFeedbacks || [], tot);
     renderSubscribersSection(data.subscribers || [], tot);
     renderRecentVisits(data.recentVisits || []);
   }
@@ -393,6 +394,33 @@
       .join("");
   }
 
+  function renderFeedbacksSection(feedbacks, totals) {
+    const summaryEl = document.getElementById("feedback-status-summary");
+    const tbody = document.getElementById("analytics-feedbacks-tbody");
+    if (summaryEl) {
+      summaryEl.textContent = `全站累計點亮共鳴 ${fmtNum(totals.totalResonances || 0)} 次 · 收到私密回饋 ${fmtNum(
+        totals.totalFeedbacks ?? feedbacks.length
+      )} 則`;
+    }
+    if (!tbody) return;
+    if (!feedbacks.length) {
+      tbody.innerHTML = `<tr><td colspan="4" style="color:var(--ink-muted); text-align:center; padding:22px;">目前尚無讀者悄悄話回饋（讀者於文章底部送出後將私密顯示於此）</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = feedbacks
+      .map((f) => {
+        return `
+          <tr>
+            <td class="mono-label" style="white-space:nowrap; font-size:0.78rem;">${esc(formatVisitTime(f.timestamp))}</td>
+            <td><strong>${esc(f.title || f.route)}</strong></td>
+            <td class="mono-label" style="font-size:0.8rem; color:var(--accent, #6e5039);">${esc(f.sender || "匿名讀者")}</td>
+            <td style="white-space:pre-wrap; line-height:1.6;">${esc(f.message)}</td>
+          </tr>
+        `;
+      })
+      .join("");
+  }
+
   function renderTopPages(pages, totalViews) {
     const wrap = document.getElementById("analytics-top-pages");
     if (!wrap) return;
@@ -407,6 +435,7 @@
         const sharePct = totalViews > 0 ? Math.round((p.views / totalViews) * 100) : 0;
         const href = p.route.startsWith("#") ? `./${p.route}` : `./#/${p.route}`;
         const dwellLabel = p.avgDwellSec > 0 ? ` · ⏱ 平均停留 ${fmtDuration(p.avgDwellSec)}` : "";
+        const resLabel = p.resonances > 0 ? ` · 🕯️ 共鳴 ${fmtNum(p.resonances)}` : "";
         return `
           <div class="rank-row">
             <div class="rank-top">
@@ -418,7 +447,7 @@
               </div>
               <span class="rank-metrics mono-label"><strong>${fmtNum(p.views)}</strong> 次 · ${fmtNum(
           p.visitors
-        )} 人 (${sharePct}%)${esc(dwellLabel)}</span>
+        )} 人 (${sharePct}%)${esc(dwellLabel)}${esc(resLabel)}</span>
             </div>
             <div class="rank-bar-bg"><div class="rank-bar-fill" style="width:${widthPct}%;"></div></div>
           </div>
