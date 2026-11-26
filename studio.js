@@ -100,13 +100,16 @@
       opts.headers = { ...(opts.headers || {}), "X-Studio-CSRF": state.csrfToken };
     }
     const resp = await nativeFetch(input, opts);
-    if (resp.status === 401 && urlStr.startsWith("/api/studio/")) {
+    if (resp.status === 401 && urlStr.startsWith("/api/studio/") && !window.__STUDIO_IS_CLOUD__) {
       window.location.reload();
     }
     return resp;
   };
 
   async function init() {
+    if (window.__STUDIO_IS_CLOUD__ && window.__STUDIO_CLOUD_LOCKED__) {
+      return;
+    }
     bindTabs();
     bindContentStudioEvents();
     bindHtmlPageEditorEvents();

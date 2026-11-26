@@ -16,6 +16,7 @@
   const IS_LOCAL = host === "localhost" || host === "127.0.0.1" || host === "::1";
   if (IS_LOCAL) {
     window.__STUDIO_IS_CLOUD__ = false;
+    window.__STUDIO_CLOUD_LOCKED__ = false;
     return;
   }
 
@@ -37,6 +38,8 @@
       return null;
     }
   }
+
+  window.__STUDIO_CLOUD_LOCKED__ = !readSession();
 
   function saveSession(token, csrf, expiresAt) {
     sessionStorage.setItem(SESSION_KEY, JSON.stringify({ token, csrf, expiresAt }));
@@ -128,8 +131,9 @@
           <button type="submit" id="cloud-gate-submit" class="cloud-gate-btn">驗證身分並解鎖雲端工作台</button>
         </form>
 
-        <div class="cloud-gate-footer">
+        <div class="cloud-gate-footer" style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
           <a href="./">← 返回公開網站首頁</a>
+          <a href="http://localhost:8788/studio.html">切換至 Mac 本機工作台 (localhost:8788) →</a>
         </div>
       </div>
     `;
@@ -137,6 +141,21 @@
 
     const errEl = overlay.querySelector("#cloud-gate-error");
     if (initialErr) errEl.textContent = initialErr;
+
+    // 背景檢查雲端閘門環境變數是否已隨 Netlify 部署生效
+    origFetch(`${CLOUD_API_BASE}/auth/status`)
+      .then((r) => r.json())
+      .then((st) => {
+        if (st && st.configured === false && !errEl.textContent) {
+          errEl.textContent =
+            "提醒：Netlify 雲端閘門因本月免費建置額度已滿尚未重編譯；在額度重置前，請點右下角「切換至 Mac 本機工作台 (localhost:8788)」登入編輯與檢閱點閱儀表板。";
+        }
+      })
+      .catch(() => {});
+
+    requestAnimationFrame(() => {
+      document.getElementById("cloud-login-pw")?.focus();
+    });
 
     const form = overlay.querySelector("#cloud-login-form");
     form.addEventListener("submit", async (e) => {

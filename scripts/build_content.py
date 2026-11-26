@@ -179,6 +179,17 @@ def build_manifest_and_rss():
         idx_html = re.sub(r'(\./(?:site\.config\.js|theme\.custom\.css|styles\.css|app\.js))(?:\?v=[^"\']+)?', rf"\1?v={ver}", idx_html)
         index_path.write_text(idx_html, encoding="utf-8")
 
+    studio_path = ROOT_DIR / "studio.html"
+    if studio_path.exists():
+        ver = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        st_html = studio_path.read_text(encoding="utf-8")
+        st_html = re.sub(
+            r'(\./(?:styles\.css|theme\.custom\.css|studio\.css|studio-cloud-client\.js|studio\.js|studio-media\.js|studio-analytics\.js))(?:\?v=[^"\']+)?',
+            rf"\1?v={ver}",
+            st_html,
+        )
+        studio_path.write_text(st_html, encoding="utf-8")
+
     # 產生 RSS 2.0 訂閱檔
     site_url = os.environ.get("SITE_BASE_URL", "https://deediaoyeh.github.io/personal-site").rstrip("/")
     rss_items = []
