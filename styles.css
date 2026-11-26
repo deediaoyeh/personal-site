@@ -1521,6 +1521,44 @@ a.file-attachment-card:hover {
   margin-left: 4px;
 }
 
+.article-resource-callout {
+  margin-top: 16px;
+  padding: 13px 16px;
+  background: var(--bg-subtle, #ece7dd);
+  border: 1px solid var(--rule-strong, rgba(29, 28, 25, 0.22));
+  border-left: 3px solid var(--accent-moss, #485643);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.resource-kicker {
+  font-size: 0.72rem;
+  color: var(--ink-secondary, #534f46);
+  letter-spacing: 0.08em;
+}
+
+.resource-cta-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: var(--ink-primary, #1d1c19);
+  color: var(--bg-paper, #f5f2eb) !important;
+  font-size: 0.84rem;
+  font-weight: 500;
+  text-decoration: none !important;
+  border-bottom: none !important;
+  border-radius: 2px;
+  transition: opacity 0.16s ease;
+}
+
+.resource-cta-btn:hover {
+  opacity: 0.88;
+}
+
 /* 全文檢索關鍵字標亮 */
 mark.search-hl {
   background: rgba(110, 80, 57, 0.18);

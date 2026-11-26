@@ -244,6 +244,10 @@ def build_manifest_and_rss():
             links = [l.strip() for l in re.split(r"[,，、]+", meta.get("links", "")) if l.strip()]
             plain_text = strip_to_plain_text(body)
 
+            auto_summary = meta.get("summary", "").strip()
+            if not auto_summary and plain_text:
+                auto_summary = plain_text[:78] + ("⋯" if len(plain_text) > 78 else "")
+
             entry = {
                 "title": meta.get("title", slug),
                 "slug": slug,
@@ -251,12 +255,15 @@ def build_manifest_and_rss():
                 "format": meta.get("format", "markdown"),
                 "date": meta.get("date", "2026-01-01"),
                 "readingTime": meta.get("readingTime") or estimate_reading_time(body),
-                "summary": meta.get("summary", ""),
+                "summary": auto_summary,
                 "tags": tags,
                 "links": links,
                 "path": f"./content/{folder.name}/{md_path.name}",
                 "searchText": plain_text,
             }
+            if meta.get("resourceUrl", "").strip():
+                entry["resourceUrl"] = meta["resourceUrl"].strip()
+                entry["resourceLabel"] = meta.get("resourceLabel", "").strip() or "開啟本篇附屬教材／資料庫"
             if "stage" in meta:
                 entry["stage"] = meta["stage"]
             if "noteCode" in meta:

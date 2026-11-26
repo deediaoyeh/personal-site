@@ -1004,6 +1004,16 @@
               <button type="button" class="utility-chip-btn" id="btn-print-handout" title="隱藏網站選單，以乾淨紙本講義格式列印或另存 PDF">🖨️ 列印講義 / PDF</button>
               <span id="article-utility-toast" class="utility-toast-msg mono-label" aria-live="polite"></span>
             </div>
+            ${
+              (meta.resourceUrl || item.resourceUrl || "").trim()
+                ? `<div class="article-resource-callout">
+                    <span class="resource-kicker mono-label">ATTACHED MATERIAL · 本篇附屬教材與資料庫</span>
+                    <a href="${escapeHtml((meta.resourceUrl || item.resourceUrl).trim())}" target="_blank" rel="noopener noreferrer" class="resource-cta-btn">
+                      📂 ${escapeHtml((meta.resourceLabel || item.resourceLabel || "開啟本篇研習教材／資料庫").trim())} ↗
+                    </a>
+                  </div>`
+                : ""
+            }
           </header>
 
           <div class="prose" id="article-prose">
@@ -1013,15 +1023,16 @@
           ${
             relatedItems.length > 0
               ? `
-            <aside class="backlinks-box" aria-label="雙向連結與關聯內容">
-              <span class="section-kicker mono-label">CONNECTED NOTES & ESSAYS · 知識網絡關聯</span>
+            <aside class="backlinks-box" aria-label="雙向連結與同主題延伸內容">
+              <span class="section-kicker mono-label">CONNECTED &amp; RELATED · 延伸思考與同主題卡片</span>
               <div class="backlinks-list">
                 ${relatedItems
                   .map((rel) => {
                     const routePrefix = rel.type === "essay" ? "essays" : rel.type === "note" ? "notes" : "letters";
+                    const relBadge = rel._sharedTag ? ` · #${rel._sharedTag}` : "";
                     return `
                       <a href="#/${routePrefix}/${encodeURIComponent(rel.slug)}" class="backlink-card">
-                        <span class="backlink-type mono-label">${escapeHtml(TYPE_LABELS[rel.type])} · ${escapeHtml(formatDateDot(rel.date))}</span>
+                        <span class="backlink-type mono-label">${escapeHtml(TYPE_LABELS[rel.type])} · ${escapeHtml(formatDateDot(rel.date))}${escapeHtml(relBadge)}</span>
                         <div class="backlink-title">${escapeHtml(rel.title)}</div>
                       </a>
                     `;
@@ -1301,7 +1312,28 @@
     });
 
     connectedSlugs.delete(currentItem.slug);
-    return state.manifest.items.filter((i) => connectedSlugs.has(i.slug));
+    const explicitList = state.manifest.items.filter((i) => connectedSlugs.has(i.slug));
+    if (explicitList.length >= 4) return explicitList.slice(0, 4);
+
+    // 3. 自動依共同主題標籤串聯相關長文與卡片筆記（無須手動拉線）
+    const myTags = new Set((currentItem.tags || []).map((t) => String(t || "").trim()).filter(Boolean));
+    if (myTags.size === 0) return explicitList;
+
+    const scored = [];
+    for (const cand of state.manifest.items) {
+      if (cand.slug === currentItem.slug || connectedSlugs.has(cand.slug)) continue;
+      const shared = (cand.tags || []).filter((t) => myTags.has(String(t || "").trim()));
+      if (shared.length > 0) {
+        scored.push({
+          item: { ...cand, _sharedTag: shared[0] },
+          overlap: shared.length,
+          date: cand.date || ""
+        });
+      }
+    }
+    scored.sort((a, b) => b.overlap - a.overlap || String(b.date).localeCompare(String(a.date)));
+    const needed = 4 - explicitList.length;
+    return [...explicitList, ...scored.slice(0, needed).map((s) => s.item)];
   }
 
   // =========================================================================

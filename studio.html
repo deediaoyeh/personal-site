@@ -8,16 +8,16 @@
     content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' blob: https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; frame-src 'self' blob: https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self' https://deediao-studio.netlify.app https://raw.githubusercontent.com https://www.googleapis.com https://www.youtube.com https://script.google.com https://script.googleusercontent.com; object-src 'none'; base-uri 'self'; form-action 'self'"
   />
   <title>書齋離線工作台 · Offline Website & HTML Studio</title>
-  <link rel="stylesheet" href="./styles.css?v=20261126230133" />
-  <link rel="stylesheet" href="./theme.custom.css?v=20261126230133" />
-  <link rel="stylesheet" href="./studio.css?v=20261126230133" />
+  <link rel="stylesheet" href="./styles.css?v=20261126232243" />
+  <link rel="stylesheet" href="./theme.custom.css?v=20261126232243" />
+  <link rel="stylesheet" href="./studio.css?v=20261126232243" />
 </head>
 <body class="studio-body">
   <!-- 頂部工作台工具列 -->
   <header class="studio-topbar">
     <div class="studio-brand">
       <span class="studio-badge mono-label">OFFLINE STUDIO</span>
-      <span id="studio-version-badge" class="studio-version-pill mono-label" title="目前站台版本編號（每次更動前皆自動打包備份，可隨時一鍵回溯）">v1.2.0</span>
+      <span id="studio-version-badge" class="studio-version-pill mono-label" title="目前站台版本編號（每次更動前皆自動打包備份，可隨時一鍵回溯）">v1.3.0</span>
       <strong class="studio-title">書齋離線編輯工作台</strong>
       <span id="studio-status" class="studio-status">本機直寫模式 · 斷網可用</span>
     </div>
@@ -74,9 +74,9 @@
             </div>
           </div>
           <div class="meta-form-grid">
-            <label class="field-block span-2">
+            <label class="field-block">
               <span class="field-label">標題 (Title)</span>
-              <input type="text" id="doc-title" class="studio-field-input title-input" placeholder="輸入文章或筆記標題⋯" />
+              <input type="text" id="doc-title" class="studio-field-input title-input" placeholder="輸入標題，寫完直接按 ⌘S 即可發佈⋯" />
             </label>
 
             <label class="field-block">
@@ -88,47 +88,70 @@
               </select>
             </label>
 
-            <label class="field-block">
-              <span class="field-label">英文網址代稱 (Slug)</span>
-              <input type="text" id="doc-slug" class="studio-field-input mono-label" placeholder="例如 slow-writing" />
-            </label>
-
-            <label class="field-block">
-              <span class="field-label">發佈日期</span>
-              <input type="date" id="doc-date" class="studio-field-input mono-label" />
-            </label>
-
-            <div class="field-block">
-              <label for="doc-tags" class="field-label">主題標籤（支援逗號、頓號分隔，或點選下方快選標籤）</label>
+            <div class="field-block span-2">
+              <label for="doc-tags" class="field-label">主題標籤（點選下方常用標籤，同標籤文章會自動於文末互相串聯）</label>
               <input type="text" id="doc-tags" class="studio-field-input" placeholder="例如：自主學習, 思維模型, AI協作" />
               <div id="tag-suggestions-bar" class="tag-suggestions-bar" aria-label="常用與既有標籤快選"></div>
             </div>
 
-            <!-- 筆記專用欄位 -->
-            <label class="field-block" id="wrap-note-stage" hidden>
-              <span class="field-label">筆記成熟度</span>
-              <select id="doc-stage" class="studio-field-input">
-                <option value="seedling">萌芽 · Seedling</option>
-                <option value="budding">整理中 · Budding</option>
-                <option value="evergreen">常青 · Evergreen</option>
-              </select>
-            </label>
+            <details id="doc-more-fields-details" class="doc-more-fields span-2">
+              <summary class="doc-more-fields-summary">▸ 選填設定：列表摘要、📎 本篇附屬教材／資料庫按鈕、網址代稱與日期（留空皆會自動處理）</summary>
+              <div class="doc-more-fields-grid">
+                <label class="field-block span-2">
+                  <span class="field-label">列表摘要 / 導言（選填 — 留空時會自動擷取內文前兩句）</span>
+                  <textarea id="doc-summary" rows="2" class="studio-field-input" placeholder="留空即可自動擷取內文開頭；若想自訂首頁與社群預覽卡摘要可在此填寫⋯"></textarea>
+                </label>
 
-            <label class="field-block" id="wrap-note-code" hidden>
-              <span class="field-label">卡片編號</span>
-              <input type="text" id="doc-notecode" class="studio-field-input mono-label" placeholder="NOTE · 025" />
-            </label>
+                <label class="field-block">
+                  <span class="field-label">📎 附屬教材／資料庫按鈕名稱（選填）</span>
+                  <input type="text" id="doc-resource-label" class="studio-field-input" placeholder="例如：開啟學習歷程 NotebookLM 資料庫" />
+                </label>
 
-            <!-- 電子報專用欄位 -->
-            <label class="field-block" id="wrap-letter-issue" hidden>
-              <span class="field-label">電子報期數 (數字)</span>
-              <input type="number" id="doc-issue" class="studio-field-input mono-label" min="1" placeholder="3" />
-            </label>
+                <label class="field-block">
+                  <span class="field-label">📎 附屬教材／簡報／學習單網址（選填，填寫後文首自動顯示按鈕）</span>
+                  <input type="url" id="doc-resource-url" class="studio-field-input mono-label" placeholder="https://..." />
+                </label>
 
-            <label class="field-block span-2">
-              <span class="field-label">列表摘要 / 導言 (Summary)</span>
-              <textarea id="doc-summary" rows="2" class="studio-field-input" placeholder="一至兩句話說明核心觀點，將顯示於首頁列表與搜尋摘要⋯"></textarea>
-            </label>
+                <label class="field-block">
+                  <span class="field-label">英文網址代稱 (Slug)</span>
+                  <input type="text" id="doc-slug" class="studio-field-input mono-label" placeholder="例如 slow-writing" />
+                </label>
+
+                <label class="field-block">
+                  <span class="field-label">發佈日期</span>
+                  <input type="date" id="doc-date" class="studio-field-input mono-label" />
+                </label>
+
+                <!-- 筆記專用欄位 -->
+                <label class="field-block" id="wrap-note-stage" hidden>
+                  <span class="field-label">筆記成熟度</span>
+                  <select id="doc-stage" class="studio-field-input">
+                    <option value="seedling">萌芽 · Seedling</option>
+                    <option value="budding">整理中 · Budding</option>
+                    <option value="evergreen">常青 · Evergreen</option>
+                  </select>
+                </label>
+
+                <label class="field-block" id="wrap-note-code" hidden>
+                  <span class="field-label">卡片編號</span>
+                  <input type="text" id="doc-notecode" class="studio-field-input mono-label" placeholder="NOTE · 025" />
+                </label>
+
+                <!-- 電子報專用欄位 -->
+                <label class="field-block" id="wrap-letter-issue" hidden>
+                  <span class="field-label">電子報期數 (數字)</span>
+                  <input type="number" id="doc-issue" class="studio-field-input mono-label" min="1" placeholder="3" />
+                </label>
+              </div>
+            </details>
+          </div>
+
+          <div id="letter-quick-send-bar" class="letter-quick-send-bar" hidden>
+            <span class="mono-label" style="font-size:0.78rem; color:var(--ink-secondary);">✉️ 電子報發信台（自動將 <code>[[文章連結]]</code> 轉為溫潤信紙網址）：</span>
+            <div class="letter-quick-send-actions">
+              <button type="button" class="studio-btn studio-btn-outline" data-nl-test-send>🧪 先寄測試信給自己試看</button>
+              <button type="button" class="studio-btn studio-btn-primary" data-nl-live-send>🚀 正式群發給有效訂戶</button>
+            </div>
           </div>
 
           <!-- 編輯模式切換列 -->
@@ -551,8 +574,14 @@
               <button type="button" id="sync-tab-compile-letter-btn" class="studio-btn studio-btn-outline">
                 ✨ 自動彙整最新長文＋筆記生成新一期
               </button>
-              <button type="button" id="push-nl-draft-btn" class="studio-btn studio-btn-outline">
-                📨 將目前電子報推送至 Google 試算表發信台
+              <button type="button" id="test-send-nl-btn" class="studio-btn studio-btn-outline" data-nl-test-send>
+                🧪 先寄測試信給自己試看
+              </button>
+              <button type="button" id="live-send-nl-btn" class="studio-btn studio-btn-primary" data-nl-live-send>
+                🚀 正式群發給所有有效訂戶
+              </button>
+              <button type="button" id="push-nl-draft-btn" class="studio-btn studio-btn-ghost">
+                僅推送草稿至試算表
               </button>
             </div>
           </div>
@@ -578,7 +607,7 @@
           </p>
 
           <div class="cloud-endpoints-box mono-label">
-            <div>目前站台版本: <strong id="display-site-version">v1.2.0</strong>（變更前自動備份於 <code>backups/personal-site/</code>）</div>
+            <div>目前站台版本: <strong id="display-site-version">v1.3.0</strong>（變更前自動備份於 <code>backups/personal-site/</code>）</div>
             <div>GitHub 倉庫網址: <strong id="display-github-repo">https://github.com/deediaoyeh/personal-site</strong></div>
             <div>GitHub Pages 主站: <strong id="display-github-pages">https://deediaoyeh.github.io/personal-site/</strong></div>
             <div>Netlify 備份站網址: <strong>https://deediao-studio.netlify.app</strong></div>
@@ -850,10 +879,10 @@
     </div>
   </div>
 
-  <script src="./site.config.js?v=20261126230133"></script>
-  <script src="./studio-cloud-client.js?v=20261126230133"></script>
-  <script src="./studio.js?v=20261126230133"></script>
-  <script src="./studio-media.js?v=20261126230133"></script>
-  <script src="./studio-analytics.js?v=20261126230133"></script>
+  <script src="./site.config.js?v=20261126232243"></script>
+  <script src="./studio-cloud-client.js?v=20261126232243"></script>
+  <script src="./studio.js?v=20261126232243"></script>
+  <script src="./studio-media.js?v=20261126232243"></script>
+  <script src="./studio-analytics.js?v=20261126232243"></script>
 </body>
 </html>

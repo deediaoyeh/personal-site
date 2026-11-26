@@ -285,12 +285,18 @@ function doPost(e) {
       return handleStudioCloudApi(payload);
     }
 
-    // 嚴格預設拒絕 (Fail-Closed)：必須持有正確 SYNC_TOKEN 方可寫入電子報草稿
-    if (payload.action === "save_draft") {
+    // 嚴格預設拒絕 (Fail-Closed)：必須持有正確 SYNC_TOKEN 方可寫入或發送電子報
+    if (
+      payload.action === "save_draft" ||
+      payload.action === "send_test_newsletter" ||
+      payload.action === "send_live_newsletter"
+    ) {
       if (!constantTimeEqual(String(payload.token || ""), HUB_CONFIG.SYNC_TOKEN)) {
         return jsonResponse({ ok: false, message: "拒絕存取：缺少或無效的同步金鑰 (SYNC_TOKEN)" });
       }
-      return handleSaveDraftFromStudio(payload);
+      if (payload.action === "save_draft") return handleSaveDraftFromStudio(payload);
+      if (payload.action === "send_test_newsletter") return handleSendTestNewsletter(payload);
+      if (payload.action === "send_live_newsletter") return handleSendLiveNewsletterFromStudio(payload);
     }
 
     // 嚴格預設拒絕 (Fail-Closed)：必須持有正確 ANALYTICS_READ_KEY 方可讀取點閱儀表板
@@ -589,6 +595,214 @@ function handleUnsubscribe(email, token) {
 }
 
 /**
+ * 將電子報草稿（支援 Markdown、HTML 與 [[slug|標題]] 雙向連結）自動轉為溫潤書齋信紙 HTML 與純文字備援
+ */
+function renderNewsletterEmailBodies(rawContent) {
+  const siteBase = String(HUB_CONFIG.SITE_URL || "").replace(/\/+$/, "");
+  const escHtml = (s) =>
+    String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+
+  // 先將 [[slug|標題]] 轉為真實可點擊之單篇分享網址 (/s/<slug>.html)
+  const expandWikiPlain = (txt) =>
+    String(txt || "").replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, rawSlug, label) => {
+      const slug = String(rawSlug || "").trim();
+      const title = (label || slug).trim();
+      return `${title}（${siteBase}/s/${encodeURIComponent(slug)}.html）`;
+    });
+
+  const isHtmlInput = /<\/?(p|h[1-6]|div|ul|ol|li|blockquote|table)\b/i.test(rawContent);
+  let innerHtml = "";
+
+  if (isHtmlInput) {
+    innerHtml = String(rawContent || "").replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, rawSlug, label) => {
+      const slug = String(rawSlug || "").trim();
+      const title = escHtml((label || slug).trim());
+      return `<a href="${siteBase}/s/${encodeURIComponent(slug)}.html" style="color:#6e5039;text-decoration:underline;">${title}</a>`;
+    });
+  } else {
+    const inlineMd = (line) => {
+      let s = escHtml(line);
+      s = s.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, rawSlug, label) => {
+        const slug = String(rawSlug || "").trim();
+        const title = (label || slug).trim();
+        return `<a href="${siteBase}/s/${encodeURIComponent(slug)}.html" style="color:#6e5039;font-weight:500;text-decoration:underline;">${title}</a>`;
+      });
+      s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" style="color:#6e5039;text-decoration:underline;">$1</a>');
+      s = s.replace(/\*\*([^*]+)\*\*/g, '<strong style="color:#1d1c19;">$1</strong>');
+      s = s.replace(/`([^`]+)`/g, '<code style="background:#ece7dd;padding:1px 5px;border-radius:2px;font-size:0.9em;">$1</code>');
+      return s;
+    };
+
+    const lines = String(rawContent || "").split(/\r?\n/);
+    const blocks = [];
+    let listTag = "";
+    let listItems = [];
+    const flushList = () => {
+      if (!listItems.length) return;
+      blocks.push(
+        `<${listTag} style="margin:0 0 18px;padding-left:22px;color:#1d1c19;">` +
+          listItems.map((li) => `<li style="margin-bottom:8px;">${li}</li>`).join("") +
+          `</${listTag}>`
+      );
+      listItems = [];
+      listTag = "";
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const t = lines[i].trim();
+      if (!t) {
+        flushList();
+        continue;
+      }
+      if (/^---+$/.test(t)) {
+        flushList();
+        blocks.push('<hr style="border:none;border-top:1px solid #dcd6ca;margin:26px 0;" />');
+      } else if (/^###\s+/.test(t)) {
+        flushList();
+        blocks.push(
+          `<h3 style="font-family:Georgia,'Noto Serif TC',serif;font-size:18px;font-weight:600;color:#1d1c19;margin:20px 0 8px;">${inlineMd(
+            t.replace(/^###\s+/, "")
+          )}</h3>`
+        );
+      } else if (/^##\s+/.test(t)) {
+        flushList();
+        blocks.push(
+          `<h2 style="font-family:Georgia,'Noto Serif TC',serif;font-size:20px;font-weight:600;color:#1d1c19;margin:28px 0 12px;padding-bottom:6px;border-bottom:1px solid #e4dfd4;">${inlineMd(
+            t.replace(/^##\s+/, "")
+          )}</h2>`
+        );
+      } else if (/^>\s?/.test(t)) {
+        flushList();
+        blocks.push(
+          `<blockquote style="margin:16px 0;padding:8px 16px;border-left:3px solid #6e5039;background:#f3efe6;color:#534f46;">${inlineMd(
+            t.replace(/^>\s?/, "")
+          )}</blockquote>`
+        );
+      } else if (/^\d+\.\s+/.test(t)) {
+        if (listTag && listTag !== "ol") flushList();
+        listTag = "ol";
+        listItems.push(inlineMd(t.replace(/^\d+\.\s+/, "")));
+      } else if (/^[-*]\s+/.test(t)) {
+        if (listTag && listTag !== "ul") flushList();
+        listTag = "ul";
+        listItems.push(inlineMd(t.replace(/^[-*]\s+/, "")));
+      } else {
+        flushList();
+        blocks.push(`<p style="margin:0 0 16px;color:#1d1c19;">${inlineMd(t)}</p>`);
+      }
+    }
+    flushList();
+    innerHtml = blocks.join("\n");
+  }
+
+  const plainClean = expandWikiPlain(rawContent).replace(/<[^>]+>/g, "");
+  return { innerHtml: innerHtml, plainText: plainClean };
+}
+
+function buildWrappedNewsletterHtml(innerHtml, unsubUrl, isTestPreview) {
+  const siteBase = String(HUB_CONFIG.SITE_URL || "").replace(/\/+$/, "");
+  const testBanner = isTestPreview
+    ? `<div style="background:#ece7dd;border:1px solid #cbbba8;padding:10px 14px;margin-bottom:20px;font-size:13px;color:#6e5039;">🧪 <strong>站長試閱預覽信</strong>：正式群發時此提示框不會出現，且底部會自動帶入每位訂戶專屬的一鍵退訂連結。</div>`
+    : "";
+  const unsubHtml = unsubUrl
+    ? `<br/>如需取消訂閱，請點此：<a href="${unsubUrl}" style="color:#6e5039;">一鍵取消訂閱</a>`
+    : "";
+  return (
+    `<div style="background:#f5f2eb;padding:28px 12px;">` +
+    `<div style="font-family:'PingFang TC','Noto Sans TC',Georgia,serif;max-width:620px;margin:0 auto;padding:32px 28px;background:#faf8f4;border:1px solid #e2ddd2;color:#1d1c19;line-height:1.85;font-size:16px;">` +
+    testBanner +
+    `<div style="font-size:12px;letter-spacing:0.08em;color:#857f73;margin-bottom:18px;">${HUB_CONFIG.NEWSLETTER_TITLE}</div>` +
+    innerHtml +
+    `<hr style="border:none;border-top:1px solid #dcd6ca;margin:32px 0 16px;" />` +
+    `<p style="font-size:13px;color:#857f73;line-height:1.7;">線上閱讀與歷史歸檔：<a href="${siteBase}/#/letters" style="color:#6e5039;">${siteBase}</a>${unsubHtml}</p>` +
+    `</div></div>`
+  );
+}
+
+/**
+ * 從工作台直接寄出一封「試閱測試信」給站長自己，確認信紙排版與連結無誤
+ */
+function handleSendTestNewsletter(payload) {
+  const content = String(payload.content || "").trim();
+  if (!content) return jsonResponse({ ok: false, message: "電子報內容不可為空" });
+  const issueStr = String(payload.issue || "01").padStart(2, "0");
+  const subject = "【試閱預覽】" + (String(payload.subject || "").trim() || `${HUB_CONFIG.NEWSLETTER_TITLE} 第 ${issueStr} 期`);
+  const ownerEmail = String(payload.toEmail || "").trim() || Session.getEffectiveUser().getEmail();
+  if (!ownerEmail || ownerEmail.indexOf("@") === -1) {
+    return jsonResponse({ ok: false, message: "找不到收件信箱，請先於「門面品牌」設定聯絡 Email" });
+  }
+
+  const rendered = renderNewsletterEmailBodies(content);
+  const htmlMail = buildWrappedNewsletterHtml(rendered.innerHtml, "", true);
+  GmailApp.sendEmail(ownerEmail, subject, rendered.plainText, {
+    name: HUB_CONFIG.SENDER_NAME,
+    htmlBody: htmlMail
+  });
+  return jsonResponse({
+    ok: true,
+    message: `✓ 已寄出試閱信至 ${ownerEmail}！請打開信箱確認排版與文章連結。`
+  });
+}
+
+/**
+ * 從工作台直接正式群發電子報給所有已確認 (active) 訂戶，並同步記錄於 NewsletterDrafts
+ */
+function handleSendLiveNewsletterFromStudio(payload) {
+  const content = String(payload.content || "").trim();
+  if (!content) return jsonResponse({ ok: false, message: "電子報內容不可為空" });
+  const issueStr = String(payload.issue || "01").padStart(2, "0").slice(0, 10);
+  const subject = String(payload.subject || `${HUB_CONFIG.NEWSLETTER_TITLE} 第 ${issueStr} 期`).trim();
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const subSheet = ss.getSheetByName(SHEET_SUBSCRIBERS);
+  const draftSheet = ss.getSheetByName(SHEET_ISSUES);
+  const subs = subSheet
+    ? subSheet
+        .getDataRange()
+        .getValues()
+        .slice(1)
+        .filter((r) => String(r[1] || "").replace(/^'/, "").trim() === "active")
+    : [];
+
+  if (subs.length === 0) {
+    return jsonResponse({ ok: false, message: "目前尚無已完成雙重確認 (active) 的有效訂戶可發送。" });
+  }
+
+  const rendered = renderNewsletterEmailBodies(content);
+  const scriptUrl = ScriptApp.getService().getUrl();
+  const siteBase = String(HUB_CONFIG.SITE_URL || "").replace(/\/+$/, "");
+
+  subs.forEach((sub) => {
+    const email = String(sub[0] || "").replace(/^'/, "").trim();
+    const token = String(sub[4] || "").replace(/^'/, "").trim();
+    if (!email) return;
+    const unsubUrl = `${scriptUrl}?action=unsubscribe&email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
+    const htmlMail = buildWrappedNewsletterHtml(rendered.innerHtml, unsubUrl, false);
+    const plainFallback = `${rendered.plainText}\n\n——\n線上閱讀：${siteBase}/#/letters\n取消訂閱：${unsubUrl}`;
+    GmailApp.sendEmail(email, subject, plainFallback, {
+      name: HUB_CONFIG.SENDER_NAME,
+      htmlBody: htmlMail
+    });
+  });
+
+  appendSafeTextRow(
+    draftSheet,
+    [issueStr, subject, content, "sent", new Date().toISOString()],
+    [12, 200, 45000, 20, 40]
+  );
+
+  return jsonResponse({
+    ok: true,
+    sentCount: subs.length,
+    message: `🎉 已正式寄出「${subject}」給 ${subs.length} 位有效訂戶，並歸檔至試算表！`
+  });
+}
+
+/**
  * 群發最新一期草稿給所有已確認 (active) 訂戶
  */
 function sendLatestNewsletter() {
@@ -613,7 +827,7 @@ function sendLatestNewsletter() {
 
   const subject = String(drafts[targetRowIndex][1] || "").replace(/^'/, "");
   const content = String(drafts[targetRowIndex][2] || "").replace(/^'/, "");
-  const subs = subSheet.getDataRange().getValues().slice(1).filter((r) => r[1] === "active");
+  const subs = subSheet.getDataRange().getValues().slice(1).filter((r) => String(r[1] || "").replace(/^'/, "") === "active");
 
   if (subs.length === 0) {
     ui.alert("目前尚無已完成雙重確認 (active) 的有效訂戶。");
@@ -627,32 +841,20 @@ function sendLatestNewsletter() {
   );
   if (confirm !== ui.Button.YES) return;
 
-  const isHtml = /<\/?(p|h[1-6]|div|ul|ol|li|blockquote|a|strong)\b/i.test(content);
+  const rendered = renderNewsletterEmailBodies(content);
   const scriptUrl = ScriptApp.getService().getUrl();
+  const siteBase = String(HUB_CONFIG.SITE_URL || "").replace(/\/+$/, "");
 
   subs.forEach((sub) => {
-    const email = String(sub[0] || "").replace(/^'/, "");
-    const token = String(sub[4] || "");
+    const email = String(sub[0] || "").replace(/^'/, "").trim();
+    const token = String(sub[4] || "").replace(/^'/, "").trim();
     const unsubUrl = `${scriptUrl}?action=unsubscribe&email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
-    const footerPlain = `\n\n——\n線上閱讀與歷史歸檔：${HUB_CONFIG.SITE_URL}/#/letters\n取消訂閱：${unsubUrl}`;
-
-    if (isHtml) {
-      const htmlMail =
-        `<div style="font-family:'PingFang TC','Noto Sans TC',Georgia,serif;max-width:620px;margin:0 auto;padding:28px 24px;background:#faf8f4;color:#1d1c19;line-height:1.85;font-size:16px;">` +
-        content +
-        `<hr style="border:none;border-top:1px solid #dcd6ca;margin:32px 0 16px;" />` +
-        `<p style="font-size:13px;color:#857f73;">線上閱讀與歷史歸檔：<a href="${HUB_CONFIG.SITE_URL}/#/letters" style="color:#6e5039;">${HUB_CONFIG.SITE_URL}</a><br/>如需取消訂閱，請點此：<a href="${unsubUrl}" style="color:#6e5039;">一鍵取消訂閱</a></p>` +
-        `</div>`;
-      const plainFallback = content.replace(/<[^>]+>/g, "") + footerPlain;
-      GmailApp.sendEmail(email, subject, plainFallback, {
-        name: HUB_CONFIG.SENDER_NAME,
-        htmlBody: htmlMail
-      });
-    } else {
-      GmailApp.sendEmail(email, subject, content + footerPlain, {
-        name: HUB_CONFIG.SENDER_NAME
-      });
-    }
+    const htmlMail = buildWrappedNewsletterHtml(rendered.innerHtml, unsubUrl, false);
+    const plainFallback = `${rendered.plainText}\n\n——\n線上閱讀與歷史歸檔：${siteBase}/#/letters\n取消訂閱：${unsubUrl}`;
+    GmailApp.sendEmail(email, subject, plainFallback, {
+      name: HUB_CONFIG.SENDER_NAME,
+      htmlBody: htmlMail
+    });
   });
 
   draftSheet.getRange(targetRowIndex + 1, 4).setNumberFormat("@").setValue("sent");
@@ -1569,6 +1771,8 @@ function composeMdWithFrontmatter(meta, body) {
     "readingTime",
     "tags",
     "links",
+    "resourceLabel",
+    "resourceUrl",
     "summary"
   ];
   const lines = ["---"];
@@ -1689,7 +1893,7 @@ function ghBuildUpdatedManifest(overrideItem, deletedPath) {
         format: meta.format || "markdown",
         date: meta.date || new Date().toISOString().slice(0, 10),
         readingTime: meta.readingTime || `${Math.max(1, Math.round(cleanChars / 380))} min`,
-        summary: meta.summary || "",
+        summary: meta.summary || plainSearch.slice(0, 78),
         tags: String(meta.tags || "")
           .split(/[,，、]+/)
           .map((s) => s.trim())
@@ -1704,6 +1908,10 @@ function ghBuildUpdatedManifest(overrideItem, deletedPath) {
       if (meta.stage) entry.stage = meta.stage;
       if (meta.noteCode) entry.noteCode = meta.noteCode;
       if (meta.issue) entry.issue = Number(meta.issue) || meta.issue;
+      if (meta.resourceUrl) {
+        entry.resourceUrl = meta.resourceUrl;
+        entry.resourceLabel = meta.resourceLabel || "開啟本篇附屬教材／資料庫";
+      }
       items.push(entry);
     });
   });
@@ -1779,6 +1987,14 @@ function handleStudioCloudApi(payload) {
 
     if (method === "POST" && subPath === "/newsletter/push-draft") {
       return handleSaveDraftFromStudio(data);
+    }
+
+    if (method === "POST" && subPath === "/newsletter/test-send") {
+      return handleSendTestNewsletter(data);
+    }
+
+    if (method === "POST" && subPath === "/newsletter/send-live") {
+      return handleSendLiveNewsletterFromStudio(data);
     }
 
     if (method === "GET" && subPath === "/item") {

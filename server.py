@@ -316,7 +316,7 @@ def read_private_sync_token() -> str:
     return ""
 
 
-def push_newsletter_draft_secure(issue: str, subject: str, content: str) -> dict:
+def call_newsletter_hub_secure(action_name: str, extra: dict) -> dict:
     cfg = read_site_config()
     script_url = (cfg.get("newsletter", {}) or {}).get("googleScriptUrl", "").strip()
     if not script_url:
@@ -324,23 +324,20 @@ def push_newsletter_draft_secure(issue: str, subject: str, content: str) -> dict
     sync_token = read_private_sync_token()
     if not sync_token:
         return {"ok": False, "message": "本機 .sync.env 尚未設定 GOOGLE_WORKSPACE_SYNC_TOKEN 同步保護金鑰"}
-    payload = json.dumps(
-        {
-            "action": "save_draft",
-            "token": sync_token,
-            "issue": issue,
-            "subject": subject,
-            "content": content,
-        }
-    ).encode("utf-8")
+    body_obj = {"action": action_name, "token": sync_token, **extra}
+    payload = json.dumps(body_obj).encode("utf-8")
     req = urllib.request.Request(
         script_url,
         data=payload,
         headers={"Content-Type": "text/plain;charset=utf-8"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=25) as resp:
+    with urllib.request.urlopen(req, timeout=30) as resp:
         return json.loads(resp.read().decode("utf-8"))
+
+
+def push_newsletter_draft_secure(issue: str, subject: str, content: str) -> dict:
+    return call_newsletter_hub_secure("save_draft", {"issue": issue, "subject": subject, "content": content})
 
 
 def read_private_analytics_key() -> str:
@@ -496,7 +493,8 @@ def parse_markdown_file(md_path: Path):
 def compose_markdown(meta: dict, body: str) -> str:
     ordered_keys = [
         "title", "slug", "type", "format", "noteCode", "stage",
-        "issue", "date", "readingTime", "tags", "links", "summary",
+        "issue", "date", "readingTime", "tags", "links",
+        "resourceLabel", "resourceUrl", "summary",
     ]
     lines = ["---"]
     for k in ordered_keys:
@@ -1236,6 +1234,33 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     str(data.get("content", "")),
                 )
                 self._send_json(draft_res, HTTPStatus.OK if draft_res.get("ok") else HTTPStatus.BAD_REQUEST)
+                return
+
+            if clean_path == "/api/studio/newsletter/test-send":
+                cfg = read_site_config()
+                default_email = (cfg.get("brand", {}) or {}).get("email", "")
+                test_res = call_newsletter_hub_secure(
+                    "send_test_newsletter",
+                    {
+                        "issue": str(data.get("issue", "01")),
+                        "subject": str(data.get("subject", "")),
+                        "content": str(data.get("content", "")),
+                        "toEmail": str(data.get("toEmail") or default_email),
+                    },
+                )
+                self._send_json(test_res, HTTPStatus.OK if test_res.get("ok") else HTTPStatus.BAD_REQUEST)
+                return
+
+            if clean_path == "/api/studio/newsletter/send-live":
+                live_res = call_newsletter_hub_secure(
+                    "send_live_newsletter",
+                    {
+                        "issue": str(data.get("issue", "01")),
+                        "subject": str(data.get("subject", "")),
+                        "content": str(data.get("content", "")),
+                    },
+                )
+                self._send_json(live_res, HTTPStatus.OK if live_res.get("ok") else HTTPStatus.BAD_REQUEST)
                 return
 
             self._send_json({"ok": False, "message": "未知的 API 路徑"}, HTTPStatus.NOT_FOUND)

@@ -178,6 +178,8 @@
       stage: document.getElementById("doc-stage")?.value || "seedling",
       noteCode: document.getElementById("doc-notecode")?.value || "",
       issue: document.getElementById("doc-issue")?.value || "",
+      resourceLabel: document.getElementById("doc-resource-label")?.value || "",
+      resourceUrl: document.getElementById("doc-resource-url")?.value || "",
       summary: document.getElementById("doc-summary")?.value || "",
       body: bodyVal
     };
@@ -258,6 +260,8 @@
         document.getElementById("doc-stage").value = snap.stage || "seedling";
         document.getElementById("doc-notecode").value = snap.noteCode || "";
         document.getElementById("doc-issue").value = snap.issue || "";
+        document.getElementById("doc-resource-label").value = snap.resourceLabel || "";
+        document.getElementById("doc-resource-url").value = snap.resourceUrl || "";
         document.getElementById("doc-summary").value = snap.summary || "";
         document.getElementById("doc-body").value = snap.body || "";
         document.getElementById("doc-wysiwyg").innerHTML =
@@ -489,10 +493,17 @@
     document.getElementById("doc-stage").value = meta.stage || "seedling";
     document.getElementById("doc-notecode").value = meta.noteCode || "";
     document.getElementById("doc-issue").value = meta.issue || "";
+    document.getElementById("doc-resource-label").value = meta.resourceLabel || "";
+    document.getElementById("doc-resource-url").value = meta.resourceUrl || "";
     document.getElementById("doc-summary").value = meta.summary || "";
     document.getElementById("doc-body").value = body || "";
     document.getElementById("doc-wysiwyg").innerHTML =
       state.docFormat === "html" ? body || "<p><br></p>" : simplePreviewMarkdown(body || "");
+
+    const moreDetails = document.getElementById("doc-more-fields-details");
+    if (moreDetails) {
+      moreDetails.open = Boolean(meta.resourceUrl);
+    }
 
     applyEditorModeUI(state.docFormat === "html" ? "wysiwyg" : "markdown", false);
     toggleTypeSpecificFields(meta.type || type);
@@ -517,7 +528,11 @@
     document.getElementById("doc-stage").value = "seedling";
     document.getElementById("doc-notecode").value = `NOTE · ${String(count + 20).padStart(3, "0")}`;
     document.getElementById("doc-issue").value = docType === "letter" ? String(count) : "";
+    document.getElementById("doc-resource-label").value = "";
+    document.getElementById("doc-resource-url").value = "";
     document.getElementById("doc-summary").value = "";
+    const moreDetails = document.getElementById("doc-more-fields-details");
+    if (moreDetails) moreDetails.open = false;
 
     if (state.editorMode === "wysiwyg" || state.editorMode === "html-source") {
       state.docFormat = "html";
@@ -624,6 +639,92 @@
     document.getElementById("wrap-note-stage").hidden = type !== "note";
     document.getElementById("wrap-note-code").hidden = type !== "note";
     document.getElementById("wrap-letter-issue").hidden = type !== "letter";
+    const nlBar = document.getElementById("letter-quick-send-bar");
+    if (nlBar) nlBar.hidden = type !== "letter";
+  }
+
+  // 無感淨化從 AI 對話 (Gemini / NotebookLM) 或 Google Docs 貼入的雜亂內聯字級與底色
+  function sanitizePastedRichHtml(rawHtml) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(rawHtml, "text/html");
+    const allowedTags = new Set([
+      "P", "H2", "H3", "STRONG", "EM", "U", "CODE", "PRE", "BLOCKQUOTE",
+      "UL", "OL", "LI", "TABLE", "THEAD", "TBODY", "TR", "TH", "TD",
+      "A", "BR", "HR", "FIGURE", "IMG", "FIGCAPTION", "DETAILS", "SUMMARY", "ASIDE"
+    ]);
+    const preserveClasses = new Set(["callout-box", "two-col-html", "craft-details", "craft-figure", "yt-media-card"]);
+
+    function cleanNode(node) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        return document.createTextNode(node.textContent || "");
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) {
+        return document.createDocumentFragment();
+      }
+      let tag = node.tagName.toUpperCase();
+      if (tag === "SCRIPT" || tag === "STYLE" || tag === "META" || tag === "LINK") {
+        return document.createDocumentFragment();
+      }
+      if (tag === "H1") tag = "H2";
+      else if (tag === "H4" || tag === "H5" || tag === "H6") tag = "H3";
+      else if (tag === "B") tag = "STRONG";
+      else if (tag === "I") tag = "EM";
+
+      const frag = document.createDocumentFragment();
+      Array.from(node.childNodes).forEach((ch) => {
+        frag.appendChild(cleanNode(ch));
+      });
+
+      if (tag === "DIV" && !Array.from(node.classList || []).some((c) => preserveClasses.has(c))) {
+        // 純包裹文字的 div 轉為段落 p，避免黏成一團
+        const hasBlockChild = Array.from(node.children || []).some((el) =>
+          /^(P|H[1-6]|UL|OL|TABLE|BLOCKQUOTE|PRE|DIV|FIGURE|ASIDE|DETAILS)$/i.test(el.tagName)
+        );
+        if (!hasBlockChild && (node.textContent || "").trim()) {
+          const p = document.createElement("p");
+          p.appendChild(frag);
+          return p;
+        }
+        return frag;
+      }
+
+      if (!allowedTags.has(tag)) {
+        return frag;
+      }
+
+      const outEl = document.createElement(tag.toLowerCase());
+      const keptCls = Array.from(node.classList || []).filter((c) => preserveClasses.has(c));
+      if (keptCls.length) outEl.className = keptCls.join(" ");
+
+      if (tag === "A") {
+        const href = (node.getAttribute("href") || "").trim();
+        if (/^(https?:|mailto:|#|\.?\/)/i.test(href)) {
+          outEl.setAttribute("href", href);
+          if (/^https?:/i.test(href)) {
+            outEl.setAttribute("target", "_blank");
+            outEl.setAttribute("rel", "noopener noreferrer");
+          }
+        }
+      } else if (tag === "IMG") {
+        const src = (node.getAttribute("src") || "").trim();
+        if (/^(https?:|data:image\/|\.?\/)/i.test(src)) {
+          outEl.setAttribute("src", src);
+          outEl.setAttribute("alt", node.getAttribute("alt") || "");
+          outEl.setAttribute("loading", "lazy");
+        } else {
+          return document.createDocumentFragment();
+        }
+      }
+
+      outEl.appendChild(frag);
+      return outEl;
+    }
+
+    const wrapper = document.createElement("div");
+    Array.from(doc.body.childNodes).forEach((ch) => {
+      wrapper.appendChild(cleanNode(ch));
+    });
+    return wrapper.innerHTML.trim();
   }
 
   function bindContentStudioEvents() {
@@ -671,10 +772,12 @@
       "doc-stage",
       "doc-notecode",
       "doc-issue",
+      "doc-resource-label",
+      "doc-resource-url",
       "doc-summary",
       "doc-body"
     ].forEach((id) => {
-      document.getElementById(id).addEventListener("input", () => {
+      document.getElementById(id)?.addEventListener("input", () => {
         markDirty();
         renderLiveContentPreview();
       });
@@ -685,11 +788,41 @@
     // 支援 doc-body 在 HTML 原始碼模式下按 Tab 縮排
     document.getElementById("doc-body").addEventListener("keydown", handleTabIndent);
 
+    // 視覺化 HTML 畫布：貼上來自 AI / Google 文件的富文本時，自動剝除外來字級與底色
+    const wyCanvas = document.getElementById("doc-wysiwyg");
+    wyCanvas.addEventListener("paste", (e) => {
+      const items = e.clipboardData?.items ? Array.from(e.clipboardData.items) : [];
+      if (items.some((it) => it.kind === "file" && it.type.startsWith("image/"))) return;
+      const plain = (e.clipboardData?.getData("text/plain") || "").trim();
+      if (extractYouTubeIdSimple(plain)) return;
+      const rawHtml = e.clipboardData?.getData("text/html") || "";
+      if (!rawHtml) return;
+
+      e.preventDefault();
+      const cleaned = sanitizePastedRichHtml(rawHtml);
+      if (cleaned) {
+        wyCanvas.focus();
+        document.execCommand("insertHTML", false, cleaned);
+        document.getElementById("doc-body").value = wyCanvas.innerHTML;
+        markDirty("content");
+        renderLiveContentPreview();
+        setStatus("✓ 已貼上內容並自動清除外來雜亂字級與底色（按 ⌘S 儲存）", "is-dirty");
+      }
+    });
+
     // 視覺化 HTML 畫布輸入連動
-    document.getElementById("doc-wysiwyg").addEventListener("input", () => {
-      document.getElementById("doc-body").value = document.getElementById("doc-wysiwyg").innerHTML;
+    wyCanvas.addEventListener("input", () => {
+      document.getElementById("doc-body").value = wyCanvas.innerHTML;
       markDirty();
       renderLiveContentPreview();
+    });
+
+    // 電子報試寄與正式群發按鈕（寫作台與同步台共用）
+    document.querySelectorAll("[data-nl-test-send]").forEach((btn) => {
+      btn.addEventListener("click", () => sendNewsletterFromStudio(false, btn));
+    });
+    document.querySelectorAll("[data-nl-live-send]").forEach((btn) => {
+      btn.addEventListener("click", () => sendNewsletterFromStudio(true, btn));
     });
 
     // Markdown 工具列
@@ -1234,6 +1367,59 @@
     }
   }
 
+  async function sendNewsletterFromStudio(isLive, triggerBtn) {
+    const scriptUrl = (document.getElementById("cfg-nl-scripturl")?.value || state.config?.newsletter?.googleScriptUrl || "").trim();
+    if (!scriptUrl) {
+      setStatus("請先於「電子報與同步」填入 Google Apps Script 網址後再寄信", "is-dirty");
+      return;
+    }
+
+    const docType = document.getElementById("doc-type").value;
+    const title = document.getElementById("doc-title").value.trim();
+    const body =
+      state.editorMode === "wysiwyg"
+        ? document.getElementById("doc-wysiwyg").innerHTML.trim()
+        : document.getElementById("doc-body").value.trim();
+    const issue = document.getElementById("doc-issue").value.trim() || "01";
+
+    if (docType !== "letter" || !body) {
+      setStatus("請先在「內容寫作」點選一期電子報（或點「✨ 自動彙整本期電子報」）再執行寄信", "is-dirty");
+      return;
+    }
+
+    if (isLive) {
+      const ok = window.confirm(
+        `確定要立即將本期電子報：\n「${title || `第 ${issue} 期`}」\n正式寄發給所有已確認訂閱 (active) 的讀者嗎？`
+      );
+      if (!ok) return;
+    }
+
+    if (triggerBtn) triggerBtn.disabled = true;
+    setStatus(isLive ? "正在透過雲端中樞正式群發電子報給所有有效訂戶⋯" : "正在寄出溫潤信紙試閱信至你的信箱⋯");
+
+    try {
+      const endpoint = isLive ? "/api/studio/newsletter/send-live" : "/api/studio/newsletter/test-send";
+      const toEmail = document.getElementById("cfg-brand-email")?.value.trim() || state.config?.brand?.email || "";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          issue,
+          subject: title,
+          content: body,
+          toEmail
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || data.ok === false) throw new Error(data.message || "寄送失敗");
+      setStatus(data.message || (isLive ? "🎉 已成功群發本期電子報！" : "✓ 測試信已寄出！"), "is-saved");
+    } catch (err) {
+      setStatus(`寄送失敗：${err.message}`, "is-dirty");
+    } finally {
+      if (triggerBtn) triggerBtn.disabled = false;
+    }
+  }
+
   function collectConfigFromForms() {
     const parsePipeLines = (raw, mapper) =>
       raw
@@ -1495,6 +1681,21 @@
         const body = document.getElementById("doc-body").value;
         const wikiSlugs = [...body.matchAll(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)].map((m) => m[1].trim());
         const docType = document.getElementById("doc-type").value;
+        let summaryVal = document.getElementById("doc-summary").value.trim();
+        if (!summaryVal) {
+          const plainAuto = body
+            .replace(/<[^>]+>/g, " ")
+            .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, s, l) => l || s)
+            .replace(/https?:\/\/\S+/g, " ")
+            .replace(/[#*>`~_\-|]/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+          summaryVal = plainAuto.slice(0, 78) + (plainAuto.length > 78 ? "⋯" : "");
+          document.getElementById("doc-summary").value = summaryVal;
+        }
+
+        const resUrl = document.getElementById("doc-resource-url")?.value.trim() || "";
+        const resLabel = document.getElementById("doc-resource-label")?.value.trim() || "";
 
         const meta = {
           title: document.getElementById("doc-title").value.trim() || "未命名文章",
@@ -1504,8 +1705,12 @@
           date: document.getElementById("doc-date").value || todayStr(),
           tags: parseTagList(document.getElementById("doc-tags").value).join(", "),
           links: [...new Set(wikiSlugs)].join(", "),
-          summary: document.getElementById("doc-summary").value.trim()
+          summary: summaryVal
         };
+        if (resUrl) {
+          meta.resourceUrl = resUrl;
+          meta.resourceLabel = resLabel || "開啟本篇研習教材／資料庫";
+        }
 
         if (docType === "note") {
           meta.stage = document.getElementById("doc-stage").value;

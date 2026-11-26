@@ -1531,6 +1531,61 @@ a.rank-title:hover {
   gap: 8px;
 }
 
+.doc-more-fields {
+  border: 1px dashed rgba(29, 28, 25, 0.18);
+  background: var(--bg-paper, #f5f2eb);
+  padding: 8px 12px;
+  border-radius: 2px;
+}
+
+.doc-more-fields-summary {
+  cursor: pointer;
+  font-size: 0.79rem;
+  color: var(--ink-secondary, #534f46);
+  user-select: none;
+  list-style: none;
+}
+
+.doc-more-fields-summary::-webkit-details-marker {
+  display: none;
+}
+
+.doc-more-fields[open] .doc-more-fields-summary {
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(29, 28, 25, 0.1);
+  color: var(--ink-primary, #1d1c19);
+  font-weight: 500;
+}
+
+.doc-more-fields-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+}
+
+.letter-quick-send-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 9px 16px;
+  background: var(--bg-subtle, #ece7dd);
+  border-bottom: 1px solid var(--rule, rgba(29, 28, 25, 0.14));
+}
+
+.letter-quick-send-bar[hidden] {
+  display: none !important;
+}
+
+.letter-quick-send-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 @media (max-width: 960px) {
   .analytics-kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
