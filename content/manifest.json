@@ -1,6 +1,6 @@
 {
-  "updatedAt": "2026-11-26T11:09:57Z",
-  "count": 9,
+  "updatedAt": "2026-11-26T11:13:14Z",
+  "count": 10,
   "items": [
     {
       "title": "３小時學習歷程講課內容摘要",
@@ -33,6 +33,24 @@
       ],
       "links": [],
       "path": "./content/essays/essay-20261126-4.md"
+    },
+    {
+      "title": "逆向工程",
+      "slug": "note-20261126-5",
+      "type": "note",
+      "format": "html",
+      "date": "2026-11-26",
+      "readingTime": "1 min",
+      "summary": "自造軟體 心智圖",
+      "tags": [
+        "工具應用",
+        "AI",
+        "自主學習"
+      ],
+      "links": [],
+      "path": "./content/notes/note-20261126-5.md",
+      "stage": "seedling",
+      "noteCode": "NOTE · 025"
     },
     {
       "title": "《低調走過》雙週電子報 № 01：自主學習的起點——給學生嘗試的安全感與 AI 資料庫引導",
