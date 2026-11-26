@@ -989,7 +989,15 @@
             <h3 class="newsletter-title">${compactHeader ? "把經過沉澱的思考，直接寄進你的信箱" : escapeHtml(nl.title)}</h3>
             <p class="newsletter-promise">${escapeHtml(nl.promise)}</p>
           </div>
-          <form class="newsletter-form" data-nl-form="${escapeHtml(formId)}" novalidate>
+          <form class="newsletter-form" data-nl-form="${escapeHtml(formId)}" novalidate style="position:relative;">
+            <input
+              type="text"
+              name="website"
+              tabindex="-1"
+              autocomplete="off"
+              aria-hidden="true"
+              style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;"
+            />
             <div class="newsletter-input-group">
               <input
                 type="email"
@@ -1012,16 +1020,18 @@
     document.querySelectorAll("[data-nl-form]").forEach((form) => {
       if (form.dataset.bound === "true") return;
       form.dataset.bound = "true";
+      const mountedAt = Date.now();
 
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
         const input = form.querySelector('input[name="email"]');
+        const hpInput = form.querySelector('input[name="website"]');
         const submitBtn = form.querySelector('button[type="submit"]');
         const feedback = form.querySelector(".newsletter-feedback");
         const email = (input.value || "").trim();
 
         feedback.className = "newsletter-feedback";
-        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        if (!email || /^[=+\-@'"\s]/.test(email) || !/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,16}$/i.test(email)) {
           feedback.textContent = "請輸入格式正確的 Email 信箱。";
           feedback.classList.add("is-error");
           input.focus();
@@ -1043,12 +1053,14 @@
               body: JSON.stringify({
                 action: "subscribe",
                 email: email,
+                hp: hpInput ? hpInput.value : "",
+                elapsedMs: Date.now() - mountedAt,
                 source: window.location.hash || "#/",
                 timestamp: new Date().toISOString()
               })
             });
 
-            let result = { ok: true };
+            let result = { ok: true, pendingConfirm: true };
             try {
               result = await response.json();
             } catch (_) {
@@ -1060,8 +1072,8 @@
             }
 
             feedback.textContent = result.alreadySubscribed
-              ? "這個信箱已經在訂閱名單中了，感謝你的支持。"
-              : "訂閱成功。歡迎信已寄往你的信箱，我們雙週日早晨見。";
+              ? "這個信箱已經在有效訂閱名單中了，感謝你的支持。"
+              : "✓ 確認信已寄往你的信箱！為防止他人冒用信箱，請打開信件點擊一次「確認訂閱」連結即完成加入。";
             feedback.classList.add("is-success");
             input.value = "";
           } else {

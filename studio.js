@@ -1072,22 +1072,19 @@
     setStatus("正在將本期電子報草稿推送至 Google 試算表發信台⋯");
 
     try {
-      const res = await fetch(scriptUrl, {
+      // 透過受雙重驗證保護之後端代理附帶私密 SYNC_TOKEN 推送，金鑰絕不暴露於前端瀏覽器
+      const res = await fetch("/api/studio/newsletter/push-draft", {
         method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "save_draft",
           issue,
           subject: title,
           content: body
         })
       });
-      let data = { ok: true };
-      try {
-        data = await res.json();
-      } catch (_) {}
-      if (data.ok === false) throw new Error(data.message || "推送草稿失敗");
-      setStatus(data.message || `✓ 已將第 ${issue} 期草稿送入 Google 試算表發信台！`, "is-saved");
+      const data = await res.json();
+      if (!res.ok || data.ok === false) throw new Error(data.message || "推送草稿失敗");
+      setStatus(data.message || `✓ 已將第 ${issue} 期草稿安全送入 Google 試算表發信台！`, "is-saved");
     } catch (err) {
       setStatus(`推送失敗：${err.message}`, "is-dirty");
     } finally {

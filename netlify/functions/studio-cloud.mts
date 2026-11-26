@@ -572,6 +572,34 @@ export default async (req: Request): Promise<Response> => {
       return jsonResp(req, gsData, gsData.ok ? 200 : 400);
     }
 
+    if (req.method === "POST" && subPath === "/newsletter/push-draft") {
+      const syncToken = Netlify.env.get("GOOGLE_WORKSPACE_SYNC_TOKEN") || "";
+      if (!syncToken) {
+        return jsonResp(req, { ok: false, message: "雲端尚未設定 GOOGLE_WORKSPACE_SYNC_TOKEN" }, 400);
+      }
+      const data = await req.json();
+      const cfgRaw = await readRepoTextFile("site.config.js");
+      const mCfg = cfgRaw.match(/window\.SITE_CONFIG\s*=\s*(\{[\s\S]*\})\s*;?\s*$/);
+      const cfg = mCfg ? JSON.parse(mCfg[1]) : {};
+      const scriptUrl = String(cfg?.newsletter?.googleScriptUrl || "").trim();
+      if (!scriptUrl) {
+        return jsonResp(req, { ok: false, message: "尚未設定 Google Apps Script 網址" }, 400);
+      }
+      const gsRes = await fetch(scriptUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({
+          action: "save_draft",
+          token: syncToken,
+          issue: String(data.issue || "01"),
+          subject: String(data.subject || ""),
+          content: String(data.content || ""),
+        }),
+      });
+      const gsData = await gsRes.json();
+      return jsonResp(req, gsData, gsData.ok ? 200 : 400);
+    }
+
     if (req.method === "POST" && subPath === "/analytics/test-ping") {
       const cfgRaw = await readRepoTextFile("site.config.js");
       const mCfg = cfgRaw.match(/window\.SITE_CONFIG\s*=\s*(\{[\s\S]*\})\s*;?\s*$/);

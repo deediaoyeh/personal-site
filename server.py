@@ -303,6 +303,46 @@ def import_gdrive_file(file_id: str, name: str, mime_type: str) -> dict:
     }
 
 
+def read_private_sync_token() -> str:
+    val = os.environ.get("GOOGLE_WORKSPACE_SYNC_TOKEN", "").strip()
+    if val:
+        return val
+    env_file = ROOT_DIR / ".sync.env"
+    if env_file.exists():
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("GOOGLE_WORKSPACE_SYNC_TOKEN="):
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    return ""
+
+
+def push_newsletter_draft_secure(issue: str, subject: str, content: str) -> dict:
+    cfg = read_site_config()
+    script_url = (cfg.get("newsletter", {}) or {}).get("googleScriptUrl", "").strip()
+    if not script_url:
+        return {"ok": False, "message": "尚未綁定 Google Apps Script 網址"}
+    sync_token = read_private_sync_token()
+    if not sync_token:
+        return {"ok": False, "message": "本機 .sync.env 尚未設定 GOOGLE_WORKSPACE_SYNC_TOKEN 同步保護金鑰"}
+    payload = json.dumps(
+        {
+            "action": "save_draft",
+            "token": sync_token,
+            "issue": issue,
+            "subject": subject,
+            "content": content,
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        script_url,
+        data=payload,
+        headers={"Content-Type": "text/plain;charset=utf-8"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=25) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
 def read_private_analytics_key() -> str:
     val = os.environ.get("STUDIO_ANALYTICS_KEY", "").strip()
     if val:
@@ -1185,6 +1225,15 @@ class StudioHandler(SimpleHTTPRequestHandler):
             if clean_path == "/api/studio/analytics/test-ping":
                 ping_res = send_test_analytics_ping()
                 self._send_json(ping_res, HTTPStatus.OK if ping_res.get("ok") else HTTPStatus.BAD_REQUEST)
+                return
+
+            if clean_path == "/api/studio/newsletter/push-draft":
+                draft_res = push_newsletter_draft_secure(
+                    str(data.get("issue", "01")),
+                    str(data.get("subject", "")),
+                    str(data.get("content", "")),
+                )
+                self._send_json(draft_res, HTTPStatus.OK if draft_res.get("ok") else HTTPStatus.BAD_REQUEST)
                 return
 
             self._send_json({"ok": False, "message": "未知的 API 路徑"}, HTTPStatus.NOT_FOUND)
