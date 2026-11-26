@@ -391,6 +391,8 @@ def send_test_analytics_ping() -> dict:
             "referrer": "站長儀表板測試",
             "device": "desktop",
             "host": "deediaoyeh.github.io",
+            "dwellSec": 85,
+            "visitId": f"verify-{int(datetime.now().timestamp())}",
         }
     ).encode("utf-8")
     req = urllib.request.Request(

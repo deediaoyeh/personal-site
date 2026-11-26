@@ -111,6 +111,15 @@
     document.getElementById("kpi-unique-visitors").textContent = fmtNum(tot.uniqueVisitors || 0);
     document.getElementById("kpi-today-visitors").textContent = `今日不重複訪客 ${fmtNum(tot.todayVisitors || 0)} 人`;
 
+    const avgDwellEl = document.getElementById("kpi-avg-dwell");
+    const totalReadEl = document.getElementById("kpi-total-read-time");
+    if (avgDwellEl) {
+      avgDwellEl.textContent = tot.avgDwellSec > 0 ? fmtDuration(tot.avgDwellSec) : "累積計算中";
+    }
+    if (totalReadEl) {
+      totalReadEl.textContent = `累計總停留 ${fmtTotalDuration(tot.totalDwellSec || 0)}`;
+    }
+
     document.getElementById("kpi-7d-views").textContent = fmtNum(tot.last7dViews || 0);
     document.getElementById("kpi-30d-views").textContent = `近 7 日點閱（近 30 日 ${fmtNum(tot.last30dViews || 0)} 次）`;
 
@@ -166,6 +175,7 @@
         const widthPct = Math.max(4, Math.round((p.views / maxV) * 100));
         const sharePct = totalViews > 0 ? Math.round((p.views / totalViews) * 100) : 0;
         const href = p.route.startsWith("#") ? `./${p.route}` : `./#/${p.route}`;
+        const dwellLabel = p.avgDwellSec > 0 ? ` · ⏱ 平均停留 ${fmtDuration(p.avgDwellSec)}` : "";
         return `
           <div class="rank-row">
             <div class="rank-top">
@@ -177,7 +187,7 @@
               </div>
               <span class="rank-metrics mono-label"><strong>${fmtNum(p.views)}</strong> 次 · ${fmtNum(
           p.visitors
-        )} 人 (${sharePct}%)</span>
+        )} 人 (${sharePct}%)${esc(dwellLabel)}</span>
             </div>
             <div class="rank-bar-bg"><div class="rank-bar-fill" style="width:${widthPct}%;"></div></div>
           </div>
@@ -241,13 +251,18 @@
     const tbody = document.getElementById("analytics-recent-tbody");
     if (!tbody) return;
     if (!visits.length) {
-      tbody.innerHTML = `<tr><td colspan="5" style="color:var(--ink-muted); text-align:center; padding:24px;">目前尚無訪客造訪紀錄</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" style="color:var(--ink-muted); text-align:center; padding:24px;">目前尚無訪客造訪紀錄</td></tr>`;
       return;
     }
     tbody.innerHTML = visits
       .map((v) => {
         const timeText = formatVisitTime(v.timestamp);
         const deviceLabel = v.device === "mobile" ? "手機" : v.device === "tablet" ? "平板" : "桌機";
+        const dwellSec = Number(v.dwellSec || 0);
+        const dwellCell =
+          dwellSec > 0
+            ? `<strong style="color:var(--accent-moss, #485643);">${esc(fmtDuration(dwellSec))}</strong>`
+            : `<span style="color:var(--ink-muted);">瀏覽中 / 短暫</span>`;
         return `
           <tr>
             <td class="mono-label" style="white-space:nowrap; font-size:0.78rem;">${esc(timeText)}</td>
@@ -255,12 +270,32 @@
             <td><strong>${esc(v.title || v.route)}</strong> <span class="mono-label" style="color:var(--ink-muted); font-size:0.74rem;">${esc(
           v.route
         )}</span></td>
+            <td class="mono-label" style="white-space:nowrap; font-size:0.8rem;">${dwellCell}</td>
             <td>${esc(v.referrer || "直接造訪")}</td>
             <td class="mono-label" style="font-size:0.78rem;">${esc(deviceLabel)}</td>
           </tr>
         `;
       })
       .join("");
+  }
+
+  function fmtDuration(sec) {
+    const s = Math.max(0, Math.round(Number(sec) || 0));
+    if (s < 60) return `${s} 秒`;
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return rem > 0 ? `${m}分 ${String(rem).padStart(2, "0")}秒` : `${m} 分鐘`;
+  }
+
+  function fmtTotalDuration(sec) {
+    const s = Math.max(0, Math.round(Number(sec) || 0));
+    if (s === 0) return "0 秒";
+    if (s < 60) return `${s} 秒`;
+    const totalMin = Math.floor(s / 60);
+    if (totalMin < 60) return `${totalMin} 分 ${s % 60} 秒`;
+    const hr = Math.floor(totalMin / 60);
+    const remMin = totalMin % 60;
+    return `${hr} 小時 ${remMin} 分`;
   }
 
   function formatVisitTime(iso) {

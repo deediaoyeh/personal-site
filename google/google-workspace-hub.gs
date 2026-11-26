@@ -186,9 +186,13 @@ function setupSheets() {
       "當日匿名訪客雜湊",
       "流量來源",
       "閱讀裝置",
-      "站點網域"
+      "站點網域",
+      "停留秒數",
+      "訪問識別碼"
     ]);
-    pvSheet.getRange("A1:I1").setFontWeight("bold");
+    pvSheet.getRange("A1:K1").setFontWeight("bold");
+  } else if (pvSheet.getLastColumn() < 11) {
+    pvSheet.getRange("J1:K1").setValues([["停留秒數", "訪問識別碼"]]).setFontWeight("bold");
   }
 }
 
@@ -205,7 +209,12 @@ function doPost(e) {
     const payload = JSON.parse(rawBody);
 
     // 公開端點嚴格限制單次請求大小 (<= 50KB)
-    if ((payload.action === "subscribe" || payload.action === "pageview") && rawBody.length > 50000) {
+    if (
+      (payload.action === "subscribe" ||
+        payload.action === "pageview" ||
+        payload.action === "pageview_engagement") &&
+      rawBody.length > 50000
+    ) {
       return jsonResponse({ ok: false, message: "公開請求內容過大" });
     }
 
@@ -215,6 +224,10 @@ function doPost(e) {
 
     if (payload.action === "pageview") {
       return handleTrackPageview(payload);
+    }
+
+    if (payload.action === "pageview_engagement") {
+      return handlePageviewEngagement(payload);
     }
 
     // ── 雲端編輯工作台雙重驗證 (2FA) 與 GitHub 原子讀寫閘門 ────────────────
@@ -756,6 +769,9 @@ function handleTrackPageview(payload) {
   const isoStr = now.toISOString();
   const dateStr = Utilities.formatDate(now, tz, "yyyy-MM-dd");
 
+  const initDwell = Math.min(1800, Math.max(0, Math.round(Number(payload.dwellSec || 0))));
+  const visitId = String(payload.visitId || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 48);
+
   appendSafeTextRow(
     pvSheet,
     [
@@ -767,10 +783,58 @@ function handleTrackPageview(payload) {
       payload.visitorHash || "anon",
       payload.referrer || "直接造訪",
       payload.device || "desktop",
-      payload.host || ""
+      payload.host || "",
+      String(initDwell),
+      visitId
     ],
-    [40, 16, 180, 160, 32, 48, 140, 24, 80]
+    [40, 16, 180, 160, 32, 48, 140, 24, 80, 12, 50]
   );
+  return jsonResponse({ ok: true });
+}
+
+/**
+ * 更新單次造訪之真實活躍畫面停留秒數（不重複增加點閱次數，僅原地更新對應 visitId 之停留秒數）
+ */
+function handlePageviewEngagement(payload) {
+  const visitId = String(payload.visitId || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 48);
+  const dwellSec = Math.min(1800, Math.max(0, Math.round(Number(payload.dwellSec || 0))));
+  if (!visitId || dwellSec <= 0) {
+    return jsonResponse({ ok: true });
+  }
+
+  const cache = CacheService.getScriptCache();
+  const now = new Date();
+  const engBucket = "eng_m_" + Utilities.formatDate(now, "UTC", "yyyyMMddHHmm");
+  const engCount = Number(cache.get(engBucket) || "0");
+  if (engCount >= 80) {
+    return jsonResponse({ ok: true });
+  }
+  cache.put(engBucket, String(engCount + 1), 70);
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(8000);
+  try {
+    const pvSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_PAGEVIEWS);
+    if (!pvSheet) return jsonResponse({ ok: true });
+    const lastRow = pvSheet.getLastRow();
+    if (lastRow < 2) return jsonResponse({ ok: true });
+
+    const scanCount = Math.min(150, lastRow - 1);
+    const startRow = lastRow - scanCount + 1;
+    const tailVals = pvSheet.getRange(startRow, 10, scanCount, 2).getValues();
+    for (let i = tailVals.length - 1; i >= 0; i--) {
+      const rowVid = String(tailVals[i][1] || "").replace(/^'/, "");
+      if (rowVid === visitId) {
+        const prevSec = Number(String(tailVals[i][0] || "0").replace(/^'/, "")) || 0;
+        if (dwellSec > prevSec) {
+          pvSheet.getRange(startRow + i, 10).setNumberFormat("@").setValue(String(dwellSec));
+        }
+        break;
+      }
+    }
+  } finally {
+    lock.releaseLock();
+  }
   return jsonResponse({ ok: true });
 }
 
@@ -803,6 +867,8 @@ function handleAnalyticsSummary() {
   let todayViews = 0;
   let last7dViews = 0;
   let last30dViews = 0;
+  let totalDwellSec = 0;
+  let dwellSampleCount = 0;
   const allVisitorSet = {};
   const todayVisitorSet = {};
   const pageStats = {};
@@ -822,9 +888,14 @@ function handleAnalyticsSummary() {
     const vHash = unquote(r[5]) || "anon";
     const ref = unquote(r[6]) || "直接造訪";
     const dev = (unquote(r[7]) || "desktop").toLowerCase();
+    const dwell = Math.min(1800, Math.max(0, Number(unquote(r[9])) || 0));
 
     totalViews++;
     allVisitorSet[`${dStr}:${vHash}`] = true;
+    if (dwell > 0) {
+      totalDwellSec += dwell;
+      dwellSampleCount++;
+    }
 
     if (dStr === todayStr) {
       todayViews++;
@@ -839,12 +910,24 @@ function handleAnalyticsSummary() {
     }
 
     if (!pageStats[route]) {
-      pageStats[route] = { route: route, title: title, pageType: pType, views: 0, visitorSet: {} };
+      pageStats[route] = {
+        route: route,
+        title: title,
+        pageType: pType,
+        views: 0,
+        visitorSet: {},
+        dwellSum: 0,
+        dwellCnt: 0
+      };
     }
     pageStats[route].views++;
     pageStats[route].title = title || pageStats[route].title;
     pageStats[route].pageType = pType || pageStats[route].pageType;
     pageStats[route].visitorSet[`${dStr}:${vHash}`] = true;
+    if (dwell > 0) {
+      pageStats[route].dwellSum += dwell;
+      pageStats[route].dwellCnt++;
+    }
 
     referrerStats[ref] = (referrerStats[ref] || 0) + 1;
 
@@ -862,7 +945,8 @@ function handleAnalyticsSummary() {
       pageType: unquote(r[4]) || "page",
       referrer: unquote(r[6]) || "直接造訪",
       device: unquote(r[7]) || "desktop",
-      host: unquote(r[8]) || ""
+      host: unquote(r[8]) || "",
+      dwellSec: Math.min(1800, Math.max(0, Number(unquote(r[9])) || 0))
     });
   }
 
@@ -886,13 +970,18 @@ function handleAnalyticsSummary() {
   }));
 
   const topPages = Object.keys(pageStats)
-    .map((k) => ({
-      route: pageStats[k].route,
-      title: pageStats[k].title,
-      pageType: pageStats[k].pageType,
-      views: pageStats[k].views,
-      visitors: Object.keys(pageStats[k].visitorSet).length
-    }))
+    .map((k) => {
+      const ps = pageStats[k];
+      return {
+        route: ps.route,
+        title: ps.title,
+        pageType: ps.pageType,
+        views: ps.views,
+        visitors: Object.keys(ps.visitorSet).length,
+        totalDwellSec: ps.dwellSum,
+        avgDwellSec: ps.dwellCnt > 0 ? Math.round(ps.dwellSum / ps.dwellCnt) : 0
+      };
+    })
     .sort((a, b) => b.views - a.views)
     .slice(0, 15);
 
@@ -912,6 +1001,8 @@ function handleAnalyticsSummary() {
       todayVisitors: Object.keys(todayVisitorSet).length,
       last7dViews: last7dViews,
       last30dViews: last30dViews,
+      totalDwellSec: totalDwellSec,
+      avgDwellSec: dwellSampleCount > 0 ? Math.round(totalDwellSec / dwellSampleCount) : 0,
       activeSubscribers: activeSubscribers,
       totalSubscribers: totalSubscribers
     },
@@ -1407,7 +1498,9 @@ function handleStudioCloudApi(payload) {
         visitorHash: "owner-cloud-verify",
         referrer: "站長儀表板測試",
         device: "desktop",
-        host: "deediaoyeh.github.io"
+        host: "deediaoyeh.github.io",
+        dwellSec: 85,
+        visitId: "cloud-verify-" + Date.now()
       });
     }
 

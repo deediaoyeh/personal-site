@@ -308,10 +308,12 @@
   }
 
   // =========================================================================
-  // 輕量無痕點閱統計信標（不蒐集個資與 Cookie；自動排除本機與已開啟排除之站長瀏覽器）
+  // 輕量無痕點閱與「真實畫面停留時間」追蹤（自動扣除切出分頁／閒置發呆秒數）
   // =========================================================================
   let lastTrackedRoute = "";
   let beaconTimer = null;
+  let activeVisit = null; // { visitId, scriptUrl, accumulatedMs, visibleSince, lastInteractionAt, lastSentSec }
+  let engagementLifecycleBound = false;
 
   function getAnonVisitorHash() {
     try {
@@ -325,6 +327,91 @@
     } catch (_) {
       return "anon";
     }
+  }
+
+  function computeActiveDwellSeconds() {
+    if (!activeVisit) return 0;
+    let totalMs = activeVisit.accumulatedMs;
+    if (activeVisit.visibleSince > 0 && !document.hidden) {
+      const now = Date.now();
+      // 單段連續無滾動／滑鼠互動最多計入 180 秒，避免開著分頁離開座位造成虛胖停留時間
+      const rawStretch = now - activeVisit.visibleSince;
+      const idleGap = now - activeVisit.lastInteractionAt;
+      const effectiveStretch = idleGap > 180000 ? Math.max(0, rawStretch - (idleGap - 180000)) : rawStretch;
+      totalMs += Math.max(0, effectiveStretch);
+    }
+    return Math.min(1800, Math.round(totalMs / 1000));
+  }
+
+  function flushCurrentVisitDwell(useBeaconApi) {
+    if (!activeVisit || !activeVisit.visitId || !activeVisit.scriptUrl) return;
+    const sec = computeActiveDwellSeconds();
+    if (sec < 3 || sec <= activeVisit.lastSentSec) return;
+    activeVisit.lastSentSec = sec;
+
+    const bodyStr = JSON.stringify({
+      action: "pageview_engagement",
+      visitId: activeVisit.visitId,
+      dwellSec: sec
+    });
+
+    if (useBeaconApi && navigator.sendBeacon) {
+      try {
+        const blob = new Blob([bodyStr], { type: "text/plain;charset=utf-8" });
+        navigator.sendBeacon(activeVisit.scriptUrl, blob);
+        return;
+      } catch (_) {}
+    }
+
+    fetch(activeVisit.scriptUrl, {
+      method: "POST",
+      mode: "no-cors",
+      keepalive: true,
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: bodyStr
+    }).catch(() => {});
+  }
+
+  function bindEngagementLifecycleOnce() {
+    if (engagementLifecycleBound) return;
+    engagementLifecycleBound = true;
+
+    const markInteraction = () => {
+      if (activeVisit) activeVisit.lastInteractionAt = Date.now();
+    };
+    window.addEventListener("scroll", markInteraction, { passive: true });
+    window.addEventListener("pointerdown", markInteraction, { passive: true });
+    window.addEventListener("keydown", markInteraction, { passive: true });
+
+    document.addEventListener("visibilitychange", () => {
+      if (!activeVisit) return;
+      if (document.hidden) {
+        const now = Date.now();
+        if (activeVisit.visibleSince > 0) {
+          const stretch = Math.min(180000, Math.max(0, now - activeVisit.visibleSince));
+          activeVisit.accumulatedMs += stretch;
+          activeVisit.visibleSince = 0;
+        }
+        flushCurrentVisitDwell(true);
+      } else {
+        activeVisit.visibleSince = Date.now();
+        activeVisit.lastInteractionAt = Date.now();
+      }
+    });
+
+    window.addEventListener("pagehide", () => {
+      flushCurrentVisitDwell(true);
+    });
+
+    // 閱讀中每 30 秒檢查一次：若累積停留有顯著增加（>= 25 秒差距）則自動回報階段停留秒數
+    setInterval(() => {
+      if (!document.hidden && activeVisit) {
+        const sec = computeActiveDwellSeconds();
+        if (sec - activeVisit.lastSentSec >= 25) {
+          flushCurrentVisitDwell(false);
+        }
+      }
+    }, 30000);
   }
 
   function classifyReferrer() {
@@ -377,19 +464,38 @@
     const scriptUrl = (CONFIG?.newsletter?.googleScriptUrl || "").trim();
     if (!scriptUrl) return;
 
+    bindEngagementLifecycleOnce();
+
     const canonicalRoute = window.location.hash || "#/";
     if (canonicalRoute === lastTrackedRoute) return;
+
+    // 切換至新文章／新頁面前，先把上一頁累積的真實停留秒數送出
+    flushCurrentVisitDwell(false);
 
     if (beaconTimer) clearTimeout(beaconTimer);
     beaconTimer = setTimeout(() => {
       lastTrackedRoute = canonicalRoute;
+      const vid = getAnonVisitorHash();
+      const visitId = `${vid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+      const now = Date.now();
+      activeVisit = {
+        visitId,
+        scriptUrl,
+        accumulatedMs: 0,
+        visibleSince: document.hidden ? 0 : now,
+        lastInteractionAt: now,
+        lastSentSec: 0
+      };
+
       const info = resolveRouteTitleAndType(route, slug);
       const payload = JSON.stringify({
         action: "pageview",
+        visitId,
+        dwellSec: 0,
         route: canonicalRoute,
         title: info.title,
         pageType: info.pageType,
-        visitorHash: getAnonVisitorHash(),
+        visitorHash: vid,
         referrer: classifyReferrer(),
         device: detectDeviceKind(),
         host: window.location.hostname
