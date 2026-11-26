@@ -184,7 +184,7 @@ def build_manifest_and_rss():
         ver = datetime.utcnow().strftime("%Y%m%d%H%M%S")
         st_html = studio_path.read_text(encoding="utf-8")
         st_html = re.sub(
-            r'(\./(?:styles\.css|theme\.custom\.css|studio\.css|studio-cloud-client\.js|studio\.js|studio-media\.js|studio-analytics\.js))(?:\?v=[^"\']+)?',
+            r'(\./(?:site\.config\.js|styles\.css|theme\.custom\.css|studio\.css|studio-cloud-client\.js|studio\.js|studio-media\.js|studio-analytics\.js))(?:\?v=[^"\']+)?',
             rf"\1?v={ver}",
             st_html,
         )

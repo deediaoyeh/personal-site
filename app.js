@@ -10,8 +10,22 @@
     window.location.hostname === "localhost" ||
     window.location.hostname === "127.0.0.1" ||
     window.location.hostname === "::1";
-  const LIVE_DATA_ENDPOINT = "https://deediao-studio.netlify.app/api/live-data";
-  const GITHUB_REPO = "deediaoyeh/personal-site";
+  const LIVE_DATA_ENDPOINT = (CONFIG && CONFIG.liveDataEndpoint) || "";
+  function detectGithubRepo() {
+    if (CONFIG && typeof CONFIG.githubRepo === "string" && CONFIG.githubRepo.includes("/")) {
+      return CONFIG.githubRepo.trim();
+    }
+    const hn = window.location.hostname || "";
+    if (hn.endsWith(".github.io")) {
+      const owner = hn.slice(0, -".github.io".length);
+      const seg = (window.location.pathname || "/").split("/").filter(Boolean)[0];
+      if (owner && seg && !seg.endsWith(".html")) {
+        return `${owner}/${seg}`;
+      }
+    }
+    return "deediaoyeh/personal-site";
+  }
+  const GITHUB_REPO = detectGithubRepo();
   const GITHUB_REF_URL = `https://api.github.com/repos/${GITHUB_REPO}/git/ref/heads/main`;
 
   const state = {

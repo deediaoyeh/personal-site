@@ -21,8 +21,13 @@
   }
 
   window.__STUDIO_IS_CLOUD__ = true;
-  const CLOUD_HUB_URL =
-    "https://script.google.com/macros/s/AKfycbwqcOL2pWm9SN0eZB3w8hmg4tKJq929q-6cH4TcwhRppWOWREZYyXmex1FpaZFdiwWS/exec";
+  const cfgScriptUrl =
+    window.SITE_CONFIG &&
+    window.SITE_CONFIG.newsletter &&
+    typeof window.SITE_CONFIG.newsletter.googleScriptUrl === "string"
+      ? window.SITE_CONFIG.newsletter.googleScriptUrl.trim()
+      : "";
+  const CLOUD_HUB_URL = cfgScriptUrl;
   const SESSION_KEY = "__deediao_cloud_studio_session_v2";
 
   function readSession() {
@@ -93,6 +98,11 @@
   const origFetch = window.fetch.bind(window);
 
   async function postHubJson(payload) {
+    if (!CLOUD_HUB_URL) {
+      throw new Error(
+        "尚未設定 Google Apps Script 雲端中樞網址。請先依《新手零基礎快速上線手冊》完成試算表部署，並填入「網站品牌設定」的電子報雲端網址。"
+      );
+    }
     const resp = await origFetch(CLOUD_HUB_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
