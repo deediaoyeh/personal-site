@@ -182,7 +182,18 @@ def build_manifest_and_rss():
     studio_path = ROOT_DIR / "studio.html"
     if studio_path.exists():
         ver = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        site_ver = (ROOT_DIR / "VERSION").read_text(encoding="utf-8").strip() if (ROOT_DIR / "VERSION").exists() else "v1.0.0"
         st_html = studio_path.read_text(encoding="utf-8")
+        st_html = re.sub(
+            r'(<span[^>]*id="studio-version-badge"[^>]*>).*?(</span>)',
+            rf"\g<1>{escape(site_ver)}\2",
+            st_html,
+        )
+        st_html = re.sub(
+            r'(<strong[^>]*id="display-site-version"[^>]*>).*?(</strong>)',
+            rf"\g<1>{escape(site_ver)}\2",
+            st_html,
+        )
         st_html = re.sub(
             r'(\./(?:site\.config\.js|styles\.css|theme\.custom\.css|studio\.css|studio-cloud-client\.js|studio\.js|studio-media\.js|studio-analytics\.js))(?:\?v=[^"\']+)?',
             rf"\1?v={ver}",
@@ -234,6 +245,7 @@ def bundle_public_site(dest_name: str):
         shutil.copy2(html_file, dest / html_file.name)
 
     for static_name in (
+        "VERSION",
         "styles.css",
         "theme.custom.css",
         "site.config.js",

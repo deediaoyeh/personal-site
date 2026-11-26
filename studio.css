@@ -1497,6 +1497,17 @@ a.rank-title:hover {
   color: var(--ink-muted, #857f73);
 }
 
+.studio-version-pill {
+  font-size: 0.72rem;
+  padding: 2px 7px;
+  border-radius: 2px;
+  background: rgba(72, 86, 67, 0.14);
+  border: 1px solid rgba(72, 86, 67, 0.36);
+  color: #354330;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
 @media (max-width: 960px) {
   .analytics-kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

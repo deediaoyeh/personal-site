@@ -181,15 +181,33 @@ def _sync_git_and_netlify_locked(logs: list, env: dict):
     if git_dir.exists():
         subprocess.run(["git", "add", "-A"], cwd=str(ROOT_DIR), env=env, check=True)
         diff = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=str(ROOT_DIR), env=env)
+        released_ver = ""
         if diff.returncode != 0:
             ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+            try:
+                import version_manager
+                released_ver, snap = version_manager.release_new_version(
+                    "patch", f"工作台內容與網站同步更新 ({ts})", create_git_tag=False
+                )
+                subprocess.run(["git", "add", "-A"], cwd=str(ROOT_DIR), env=env, check=True)
+                logs.append(f"  ✓ 已自動打包完整備份 ({snap['filename']}) 並升級版本號至 {released_ver}。")
+            except Exception as exc:
+                logs.append(f"  ! 自動備份提示：{exc}")
+
+            commit_msg = (
+                f"release({released_ver}): studio update ({ts})"
+                if released_ver
+                else f"studio: update site & content ({ts})"
+            )
             subprocess.run(
-                ["git", "commit", "-m", f"studio: update site & content ({ts})"],
+                ["git", "commit", "-m", commit_msg],
                 cwd=str(ROOT_DIR),
                 env=env,
                 check=True,
             )
-            logs.append("  ✓ 已建立本機 Git 版本紀錄 (commit)。")
+            if released_ver:
+                subprocess.run(["git", "tag", "-f", released_ver], cwd=str(ROOT_DIR), env=env, check=False)
+            logs.append(f"  ✓ 已建立本機 Git 版本紀錄 ({commit_msg})。")
 
         remote = subprocess.run(
             ["git", "remote", "get-url", "origin"],
@@ -201,7 +219,7 @@ def _sync_git_and_netlify_locked(logs: list, env: dict):
         if remote.returncode == 0 and remote.stdout.strip():
             # 快速直推：大多數情況直接 fast-forward push（~1.5 秒），僅在遠端有新 commit 時才 fetch + merge 重試
             push = subprocess.run(
-                ["git", "push", "origin", "main"],
+                ["git", "push", "origin", "main", "--follow-tags"],
                 cwd=str(ROOT_DIR),
                 env=env,
                 capture_output=True,
