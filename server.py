@@ -305,6 +305,100 @@ def import_gdrive_file(file_id: str, name: str, mime_type: str) -> dict:
     }
 
 
+def get_local_github_token() -> str:
+    tok = os.environ.get("GITHUB_TOKEN", "").strip() or os.environ.get("GH_TOKEN", "").strip()
+    if tok:
+        return tok
+    try:
+        proc = subprocess.run(
+            ["git", "credential", "fill"],
+            input="protocol=https\nhost=github.com\npath=deediaoyeh/personal-site.git\n\n",
+            cwd=str(ROOT_DIR),
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if proc.returncode == 0:
+            kv = dict(line.split("=", 1) for line in proc.stdout.splitlines() if "=" in line)
+            return kv.get("password", "").strip()
+    except Exception:
+        pass
+    return ""
+
+
+def upload_large_file_to_github_release(filepath: Path, raw_name: str, mime_type: str = "application/octet-stream") -> dict:
+    """將附屬教材直接串流上傳至 GitHub Releases (attached-materials)，支援單檔最高 200 MB（GitHub 上限 2 GB），完全不佔 Git 倉庫體積。"""
+    token = get_local_github_token()
+    if not token:
+        return {}
+    rem = get_git_status_summary().get("remoteUrl", "")
+    m = re.search(r"github\.com[:/]([^/]+)/([^/.]+)", rem)
+    owner, repo = (m.group(1), m.group(2)) if m else ("deediaoyeh", "personal-site")
+    tag = "attached-materials"
+    headers_json = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    rel_obj = None
+    try:
+        req = urllib.request.Request(f"https://api.github.com/repos/{owner}/{repo}/releases/tags/{tag}", headers=headers_json)
+        with urllib.request.urlopen(req, timeout=15) as r:
+            rel_obj = json.loads(r.read().decode("utf-8"))
+    except Exception:
+        create_payload = json.dumps(
+            {
+                "tag_name": tag,
+                "name": "書齋附屬教材與大型講義檔案庫 (Attached Materials)",
+                "body": "由書齋編輯工作台自動管理之附屬教材與講義檔案（支援最高 200 MB 單檔，不佔用 Git 倉庫體積）。",
+                "draft": False,
+                "prerelease": False,
+            }
+        ).encode("utf-8")
+        creq = urllib.request.Request(
+            f"https://api.github.com/repos/{owner}/{repo}/releases",
+            data=create_payload,
+            headers={**headers_json, "Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(creq, timeout=20) as r:
+            rel_obj = json.loads(r.read().decode("utf-8"))
+
+    if not rel_obj or not rel_obj.get("id"):
+        return {}
+
+    ext = Path(raw_name).suffix.lower()
+    stem = re.sub(r"[^\w\u4e00-\u9fa5\-]+", "-", Path(raw_name).stem).strip("-")[:60] or "material"
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    asset_name = f"{stem}-{stamp}{ext}"
+    size_bytes = filepath.stat().st_size
+    up_url = f"https://uploads.github.com/repos/{owner}/{repo}/releases/{rel_obj['id']}/assets?name={urllib.parse.quote(asset_name)}"
+
+    with filepath.open("rb") as bin_stream:
+        up_req = urllib.request.Request(
+            up_url,
+            data=bin_stream,
+            headers={
+                **headers_json,
+                "Content-Type": mime_type or "application/octet-stream",
+                "Content-Length": str(size_bytes),
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(up_req, timeout=600) as up_resp:
+            asset_data = json.loads(up_resp.read().decode("utf-8"))
+            dl_url = asset_data.get("browser_download_url", "")
+            if dl_url:
+                return {
+                    "label": raw_name,
+                    "url": dl_url,
+                    "downloadUrl": dl_url,
+                    "sizeLabel": format_size(size_bytes),
+                    "ext": ext.lstrip(".").upper() or "FILE",
+                }
+    return {}
+
+
 def read_private_sync_token() -> str:
     val = os.environ.get("GOOGLE_WORKSPACE_SYNC_TOKEN", "").strip()
     if val:
@@ -1095,32 +1189,17 @@ class StudioHandler(SimpleHTTPRequestHandler):
                         out_f.write(chunk)
                         remaining -= len(chunk)
                 st = dest.stat()
-                # 若本機檔案超過 45 MB，自動嘗試透過 gdrive CLI 直傳雲端硬碟避免超過 GitHub 100MB 限制
-                gdrive_bin = find_gdrive_bin()
-                if st.st_size > 45 * 1024 * 1024 and gdrive_bin:
-                    up = subprocess.run(
-                        [gdrive_bin, "mutate", "upload", str(dest), "--parent", "1n_ZQELr2H9f1Zre0rmntedtvyrohcGxS"],
-                        capture_output=True,
-                        text=True,
-                        timeout=300,
-                    )
-                    m_id = re.search(r"ID:\s*([A-Za-z0-9_-]+)", up.stdout or "")
-                    if up.returncode == 0 and m_id:
-                        fid = m_id.group(1)
-                        dest.unlink(missing_ok=True)
-                        self._send_json(
-                            {
-                                "ok": True,
-                                "resource": {
-                                    "fileId": fid,
-                                    "label": raw_name,
-                                    "url": f"https://drive.google.com/file/d/{fid}/view?usp=sharing",
-                                    "sizeLabel": format_size(st.st_size),
-                                    "ext": ext.lstrip(".").upper() or "FILE",
-                                },
-                            }
-                        )
-                        return
+                mime_hdr = self.headers.get("Content-Type", "application/octet-stream")
+                # 只要連網可用（或檔案超過 15 MB），優先直傳 GitHub Releases 教材庫（最高支援 200 MB+，完全不佔 Git 倉庫體積，讀者全球 CDN 高速下載）
+                if st.st_size > 15 * 1024 * 1024:
+                    try:
+                        rel_res = upload_large_file_to_github_release(dest, raw_name, mime_hdr)
+                        if rel_res and rel_res.get("url"):
+                            dest.unlink(missing_ok=True)
+                            self._send_json({"ok": True, "resource": rel_res})
+                            return
+                    except Exception:
+                        pass
 
                 self._send_json(
                     {
@@ -1419,6 +1498,19 @@ class StudioHandler(SimpleHTTPRequestHandler):
                 self._send_json(fin_res, HTTPStatus.OK if fin_res.get("ok") else HTTPStatus.BAD_REQUEST)
                 return
 
+            if clean_path == "/api/studio/resources/upload-release-asset":
+                rel_res = call_newsletter_hub_secure(
+                    "resource_upload_release_asset",
+                    {
+                        "filename": str(data.get("filename", "")),
+                        "displayLabel": str(data.get("displayLabel", "")),
+                        "mimeType": str(data.get("mimeType", "application/octet-stream")),
+                        "dataBase64": str(data.get("dataBase64", "")),
+                    },
+                )
+                self._send_json(rel_res, HTTPStatus.OK if rel_res.get("ok") else HTTPStatus.BAD_REQUEST)
+                return
+
             self._send_json({"ok": False, "message": "未知的 API 路徑"}, HTTPStatus.NOT_FOUND)
         except PermissionError as exc:
             self._send_json({"ok": False, "message": str(exc)}, HTTPStatus.UNAUTHORIZED)
@@ -1472,6 +1564,31 @@ class ReusableThreadingHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
 
 
+def start_newsletter_scheduler_watcher():
+    import threading
+    import time
+
+    def _loop():
+        while True:
+            time.sleep(90)
+            try:
+                cfg = read_site_config()
+                script_url = (cfg.get("newsletter", {}) or {}).get("googleScriptUrl", "").strip()
+                if script_url:
+                    req = urllib.request.Request(
+                        script_url,
+                        data=json.dumps({"action": "tick_scheduled_newsletters"}).encode("utf-8"),
+                        headers={"Content-Type": "text/plain;charset=utf-8"},
+                        method="POST",
+                    )
+                    urllib.request.urlopen(req, timeout=20).read()
+            except Exception:
+                pass
+
+    t = threading.Thread(target=_loop, daemon=True)
+    t.start()
+
+
 def main():
     port = int(os.environ.get("PORT", "8788"))
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
@@ -1482,6 +1599,7 @@ def main():
     if not THEME_JSON_PATH.exists():
         write_theme_config(DEFAULT_THEME)
     rebuild_manifest()
+    start_newsletter_scheduler_watcher()
 
     server = ReusableThreadingHTTPServer(("127.0.0.1", port), StudioHandler)
     print(f"書齋本機服務已啟動（僅綁定本機 127.0.0.1）：")

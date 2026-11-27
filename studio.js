@@ -1602,72 +1602,109 @@
     });
   }
 
+  function readFileAsBase64WithProgress(file, onPct) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onprogress = (ev) => {
+        if (ev.lengthComputable && onPct) {
+          onPct(Math.min(45, Math.round((ev.loaded / ev.total) * 45)));
+        }
+      };
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("讀取本機檔案失敗"));
+      reader.readAsDataURL(file);
+    });
+  }
+
   async function uploadSingleResourceFile(file, onPct) {
-    // 優先走 Google Drive 斷點續傳通道（支援單檔最高 200 MB，不佔用 GitHub 倉庫容量限制）
-    try {
-      const initRes = await fetch("/api/studio/resources/init-upload", {
+    // 1. 若處於 Mac 本機工作台，直接走本機 200 MB 高速二進位串流（大檔自動上傳至 GitHub Releases 教材庫 CDN）
+    if (!window.__STUDIO_IS_CLOUD__) {
+      const rawLocal = await putBinaryWithProgress(
+        `/api/studio/resources/upload-local-stream?name=${encodeURIComponent(file.name)}`,
+        file,
+        {
+          "Content-Type": file.type || "application/octet-stream",
+          "X-Studio-CSRF": state.csrfToken || ""
+        },
+        onPct,
+        "POST"
+      );
+      const localData = JSON.parse(rawLocal || "{}");
+      if (!localData || !localData.ok || !localData.resource) {
+        throw new Error(localData?.message || "本機教材串流上傳失敗");
+      }
+      onPct(100);
+      return localData.resource;
+    }
+
+    // 2. 雲端工作台：自動協商最佳上傳通道（Google Drive 200MB 斷點續傳 或 GitHub Releases 免額外授權通道）
+    const initRes = await fetch("/api/studio/resources/init-upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        filename: file.name,
+        mimeType: file.type || "application/octet-stream",
+        sizeBytes: file.size,
+        origin: window.location.origin
+      })
+    });
+    const initData = await initRes.json();
+    if (!initRes.ok || !initData.ok) {
+      throw new Error(initData.message || "無法建立雲端教材上傳通道");
+    }
+
+    if (initData.mode === "github_release_asset") {
+      const dataUrl = await readFileAsBase64WithProgress(file, onPct);
+      onPct(55);
+      const relRes = await fetch("/api/studio/resources/upload-release-asset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           filename: file.name,
-          mimeType: file.type || "application/octet-stream",
-          sizeBytes: file.size,
-          origin: window.location.origin
-        })
-      });
-      const initData = await initRes.json();
-      if (!initRes.ok || !initData.ok || !initData.sessionUri) {
-        throw new Error(initData.message || "無法建立雲端續傳通道");
-      }
-
-      const rawResp = await putBinaryWithProgress(
-        initData.sessionUri,
-        file,
-        { "Content-Type": file.type || "application/octet-stream" },
-        onPct,
-        "PUT"
-      );
-      const driveObj = JSON.parse(rawResp || "{}");
-      if (!driveObj.id) {
-        throw new Error("未取得雲端硬碟檔案識別碼");
-      }
-      onPct(99);
-      const finRes = await fetch("/api/studio/resources/finalize-upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fileId: driveObj.id,
           displayLabel: file.name,
-          sizeBytes: file.size
+          mimeType: file.type || "application/octet-stream",
+          dataBase64: dataUrl
         })
       });
-      const finData = await finRes.json();
-      if (!finRes.ok || !finData.ok) {
-        throw new Error(finData.message || "設定檔案公開檢視權限失敗");
+      const relData = await relRes.json();
+      if (!relRes.ok || !relData.ok || !relData.resource) {
+        throw new Error(relData.message || "上傳至雲端教材庫失敗");
       }
       onPct(100);
-      return finData.resource;
-    } catch (cloudErr) {
-      // 若處於 Mac 本機離線環境，自動退回本機 200 MB 串流直寫備援
-      if (!window.__STUDIO_IS_CLOUD__) {
-        const rawLocal = await putBinaryWithProgress(
-          `/api/studio/resources/upload-local-stream?name=${encodeURIComponent(file.name)}`,
-          file,
-          {
-            "Content-Type": file.type || "application/octet-stream",
-            "X-Studio-CSRF": state.csrfToken || ""
-          },
-          onPct,
-          "POST"
-        );
-        const localData = JSON.parse(rawLocal || "{}");
-        if (localData && localData.ok && localData.resource) {
-          onPct(100);
-          return localData.resource;
-        }
-      }
-      throw cloudErr;
+      return relData.resource;
     }
+
+    if (!initData.sessionUri) {
+      throw new Error("未取得雲端硬碟續傳通道網址");
+    }
+
+    const rawResp = await putBinaryWithProgress(
+      initData.sessionUri,
+      file,
+      { "Content-Type": file.type || "application/octet-stream" },
+      onPct,
+      "PUT"
+    );
+    const driveObj = JSON.parse(rawResp || "{}");
+    if (!driveObj.id) {
+      throw new Error("未取得雲端硬碟檔案識別碼");
+    }
+    onPct(99);
+    const finRes = await fetch("/api/studio/resources/finalize-upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fileId: driveObj.id,
+        displayLabel: file.name,
+        sizeBytes: file.size
+      })
+    });
+    const finData = await finRes.json();
+    if (!finRes.ok || !finData.ok) {
+      throw new Error(finData.message || "設定檔案公開檢視權限失敗");
+    }
+    onPct(100);
+    return finData.resource;
   }
 
   async function uploadMultipleResourceFiles(files) {

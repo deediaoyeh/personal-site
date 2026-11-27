@@ -257,7 +257,15 @@ function doPost(e) {
     }
 
     if (payload.action === "pageview") {
+      try {
+        processScheduledNewsletters();
+      } catch (_) {}
       return handleTrackPageview(payload);
+    }
+
+    if (payload.action === "tick_scheduled_newsletters") {
+      processScheduledNewsletters();
+      return jsonResponse({ ok: true, tickedAt: new Date().toISOString() });
     }
 
     if (payload.action === "pageview_engagement") {
@@ -309,19 +317,28 @@ function doPost(e) {
       payload.action === "cancel_newsletter_schedule" ||
       payload.action === "newsletter_records" ||
       payload.action === "resource_init_upload" ||
-      payload.action === "resource_finalize_upload"
+      payload.action === "resource_finalize_upload" ||
+      payload.action === "resource_upload_release_asset"
     ) {
       if (!constantTimeEqual(String(payload.token || ""), HUB_CONFIG.SYNC_TOKEN)) {
         return jsonResponse({ ok: false, message: "拒絕存取：缺少或無效的同步金鑰 (SYNC_TOKEN)" });
       }
-      if (payload.action === "save_draft") return handleSaveDraftFromStudio(payload);
-      if (payload.action === "send_test_newsletter") return handleSendTestNewsletter(payload);
-      if (payload.action === "send_live_newsletter") return handleSendLiveNewsletterFromStudio(payload);
-      if (payload.action === "schedule_newsletter") return handleScheduleNewsletter(payload);
-      if (payload.action === "cancel_newsletter_schedule") return handleCancelNewsletterSchedule(payload);
-      if (payload.action === "newsletter_records") return handleGetNewsletterRecords();
-      if (payload.action === "resource_init_upload") return handleInitResourceResumableUpload(payload);
-      if (payload.action === "resource_finalize_upload") return handleFinalizeResourceUpload(payload);
+      try {
+        if (payload.action === "save_draft") return handleSaveDraftFromStudio(payload);
+        if (payload.action === "send_test_newsletter") return handleSendTestNewsletter(payload);
+        if (payload.action === "send_live_newsletter") return handleSendLiveNewsletterFromStudio(payload);
+        if (payload.action === "schedule_newsletter") return handleScheduleNewsletter(payload);
+        if (payload.action === "cancel_newsletter_schedule") return handleCancelNewsletterSchedule(payload);
+        if (payload.action === "newsletter_records") return handleGetNewsletterRecords();
+        if (payload.action === "resource_init_upload") return handleInitResourceResumableUpload(payload);
+        if (payload.action === "resource_finalize_upload") return handleFinalizeResourceUpload(payload);
+        if (payload.action === "resource_upload_release_asset") return handleUploadResourceReleaseAsset(payload);
+      } catch (authErr) {
+        return jsonResponse({
+          ok: false,
+          message: "執行失敗：" + String((authErr && authErr.message) || authErr).slice(0, 180)
+        });
+      }
     }
 
     // 嚴格預設拒絕 (Fail-Closed)：必須持有正確 ANALYTICS_READ_KEY 方可讀取點閱儀表板
@@ -841,18 +858,22 @@ function handleSendLiveNewsletterFromStudio(payload) {
  * 自動管理排程派送之時間觸發器（有待派送排程時每 5 分鐘巡檢一次，全部派送完畢自動移除觸發器）
  */
 function ensureNewsletterScheduleTrigger(shouldExist) {
-  const triggers = ScriptApp.getProjectTriggers();
-  const existing = triggers.filter((t) => t.getHandlerFunction() === "processScheduledNewsletters");
-  if (shouldExist) {
-    if (existing.length === 0) {
-      ScriptApp.newTrigger("processScheduledNewsletters").timeBased().everyMinutes(5).create();
+  try {
+    const triggers = ScriptApp.getProjectTriggers();
+    const existing = triggers.filter((t) => t.getHandlerFunction() === "processScheduledNewsletters");
+    if (shouldExist) {
+      if (existing.length === 0) {
+        ScriptApp.newTrigger("processScheduledNewsletters").timeBased().everyMinutes(5).create();
+      }
+    } else {
+      existing.forEach((t) => {
+        try {
+          ScriptApp.deleteTrigger(t);
+        } catch (_) {}
+      });
     }
-  } else {
-    existing.forEach((t) => {
-      try {
-        ScriptApp.deleteTrigger(t);
-      } catch (_) {}
-    });
+  } catch (_) {
+    // 若尚未手動點選授權 script.scriptapp 範圍，自動由 GitHub Actions 定時巡檢與網站流量雙重觸發派送
   }
 }
 
@@ -897,6 +918,9 @@ function buildNewsletterRecordsList() {
 }
 
 function handleGetNewsletterRecords() {
+  try {
+    processScheduledNewsletters();
+  } catch (_) {}
   return jsonResponse({
     ok: true,
     records: buildNewsletterRecordsList()
@@ -2256,6 +2280,114 @@ const BLOCKED_RESOURCE_EXTS = {
   ".exe": 1, ".bat": 1, ".cmd": 1, ".sh": 1, ".msi": 1, ".dll": 1, ".scr": 1, ".com": 1, ".vbs": 1
 };
 
+function ghGetOrCreateMaterialsRelease() {
+  const pat = String(HUB_CONFIG.GITHUB_PAT || "").trim();
+  const owner = HUB_CONFIG.GITHUB_OWNER;
+  const repo = HUB_CONFIG.GITHUB_REPO;
+  if (!pat || !owner || !repo) {
+    throw new Error("雲端中樞尚未設定 GITHUB_PAT");
+  }
+  const tag = "attached-materials";
+  const getRes = UrlFetchApp.fetch(`https://api.github.com/repos/${owner}/${repo}/releases/tags/${tag}`, {
+    method: "get",
+    headers: {
+      Authorization: "Bearer " + pat,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28"
+    },
+    muteHttpExceptions: true
+  });
+  if (getRes.getResponseCode() === 200) {
+    return JSON.parse(getRes.getContentText());
+  }
+  const createRes = UrlFetchApp.fetch(`https://api.github.com/repos/${owner}/${repo}/releases`, {
+    method: "post",
+    contentType: "application/json",
+    headers: {
+      Authorization: "Bearer " + pat,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28"
+    },
+    payload: JSON.stringify({
+      tag_name: tag,
+      name: "書齋附屬教材與大型講義檔案庫 (Attached Materials)",
+      body: "由書齋編輯工作台自動管理之附屬教材與講義檔案（不佔用 Git 原始碼倉庫體積）。",
+      draft: false,
+      prerelease: false
+    }),
+    muteHttpExceptions: true
+  });
+  const cCode = createRes.getResponseCode();
+  if (cCode < 200 || cCode >= 300) {
+    throw new Error(`建立教材檔案庫 Release 失敗 (${cCode})`);
+  }
+  return JSON.parse(createRes.getContentText());
+}
+
+function handleUploadResourceReleaseAsset(data) {
+  const rawName = String(data.filename || "material.bin").trim();
+  const dot = rawName.lastIndexOf(".");
+  const ext = dot >= 0 ? rawName.slice(dot).toLowerCase() : "";
+  if (BLOCKED_RESOURCE_EXTS[ext]) {
+    return jsonResponse({ ok: false, message: `基於資安考量，不允許上傳執行檔 (${ext})` });
+  }
+  const safeStem =
+    rawName
+      .slice(0, dot >= 0 ? dot : rawName.length)
+      .replace(/[^\w\u4e00-\u9fa5\-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "material";
+  const stamp = Utilities.formatDate(new Date(), "Asia/Taipei", "yyyyMMdd-HHmmss");
+  const assetName = `${safeStem}-${stamp}${ext}`;
+
+  let b64 = String(data.dataBase64 || "");
+  if (b64.indexOf("data:") === 0 && b64.indexOf(",") >= 0) {
+    b64 = b64.split(",", 2)[1];
+  }
+  const rawBytes = Utilities.base64Decode(b64);
+  const sz = rawBytes.length;
+  const mimeType = String(data.mimeType || "application/octet-stream").trim() || "application/octet-stream";
+
+  const rel = ghGetOrCreateMaterialsRelease();
+  const owner = HUB_CONFIG.GITHUB_OWNER;
+  const repo = HUB_CONFIG.GITHUB_REPO;
+  const pat = String(HUB_CONFIG.GITHUB_PAT || "").trim();
+  const uploadUrl = `https://uploads.github.com/repos/${owner}/${repo}/releases/${rel.id}/assets?name=${encodeURIComponent(assetName)}`;
+
+  const upRes = UrlFetchApp.fetch(uploadUrl, {
+    method: "post",
+    contentType: mimeType,
+    headers: {
+      Authorization: "Bearer " + pat,
+      Accept: "application/vnd.github+json"
+    },
+    payload: rawBytes,
+    muteHttpExceptions: true
+  });
+  const uCode = upRes.getResponseCode();
+  if (uCode < 200 || uCode >= 300) {
+    return jsonResponse({
+      ok: false,
+      message: `上傳附屬教材至雲端檔案庫失敗 (${uCode})：${upRes.getContentText().slice(0, 160)}`
+    });
+  }
+  const assetObj = JSON.parse(upRes.getContentText());
+  const dlUrl = assetObj.browser_download_url;
+  const szLabel =
+    sz < 1024 ? `${sz} B` : sz < 1048576 ? `${(sz / 1024).toFixed(1)} KB` : `${(sz / 1048576).toFixed(1)} MB`;
+
+  return jsonResponse({
+    ok: true,
+    resource: {
+      label: String(data.displayLabel || rawName).trim(),
+      url: dlUrl,
+      downloadUrl: dlUrl,
+      sizeLabel: szLabel,
+      ext: ext.replace(/^\./, "").toUpperCase() || "FILE"
+    }
+  });
+}
+
 function handleInitResourceResumableUpload(data) {
   const rawName = String(data.filename || "material.bin").trim();
   const sizeBytes = Number(data.sizeBytes || 0);
@@ -2282,53 +2414,72 @@ function handleInitResourceResumableUpload(data) {
   const mimeType = String(data.mimeType || "application/octet-stream").trim() || "application/octet-stream";
   const clientOrigin = String(data.origin || HUB_CONFIG.SITE_URL || "https://deediaoyeh.github.io").replace(/\/+$/, "");
 
-  const folderId = getOrCreateMaterialsFolderId();
-  const initHeaders = {
-    Authorization: "Bearer " + ScriptApp.getOAuthToken(),
-    "X-Upload-Content-Type": mimeType,
-    "X-Upload-Content-Length": String(sizeBytes)
-  };
-  if (/^https?:\/\//i.test(clientOrigin)) {
-    initHeaders.Origin = clientOrigin;
-  }
+  // 優先嘗試 Google Drive v3 Resumable 直傳通道（若已授權雲端硬碟寫入權限）
+  try {
+    const folderId = getOrCreateMaterialsFolderId();
+    const baseHeaders = {
+      Authorization: "Bearer " + ScriptApp.getOAuthToken(),
+      "X-Upload-Content-Type": mimeType,
+      "X-Upload-Content-Length": String(sizeBytes)
+    };
+    let res;
+    try {
+      const hdrWithOrigin = Object.assign({}, baseHeaders);
+      if (/^https?:\/\//i.test(clientOrigin)) hdrWithOrigin.Origin = clientOrigin;
+      res = UrlFetchApp.fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable", {
+        method: "post",
+        contentType: "application/json; charset=UTF-8",
+        headers: hdrWithOrigin,
+        payload: JSON.stringify({ name: finalName, parents: [folderId] }),
+        muteHttpExceptions: true
+      });
+    } catch (_) {
+      res = UrlFetchApp.fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable", {
+        method: "post",
+        contentType: "application/json; charset=UTF-8",
+        headers: baseHeaders,
+        payload: JSON.stringify({ name: finalName, parents: [folderId] }),
+        muteHttpExceptions: true
+      });
+    }
 
-  const res = UrlFetchApp.fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable", {
-    method: "post",
-    contentType: "application/json; charset=UTF-8",
-    headers: initHeaders,
-    payload: JSON.stringify({
-      name: finalName,
-      parents: [folderId]
-    }),
-    muteHttpExceptions: true
-  });
+    const code = res.getResponseCode();
+    if (code >= 200 && code < 300) {
+      const hdrs = res.getAllHeaders ? res.getAllHeaders() : res.getHeaders();
+      let sessionUri = "";
+      Object.keys(hdrs || {}).forEach((k) => {
+        if (k.toLowerCase() === "location") {
+          sessionUri = Array.isArray(hdrs[k]) ? hdrs[k][0] : hdrs[k];
+        }
+      });
+      if (sessionUri) {
+        return jsonResponse({
+          ok: true,
+          mode: "drive_resumable",
+          sessionUri: sessionUri,
+          finalName: finalName,
+          displayLabel: rawName,
+          ext: ext.replace(/^\./, "").toUpperCase() || "FILE"
+        });
+      }
+    }
+  } catch (_) {}
 
-  const code = res.getResponseCode();
-  if (code < 200 || code >= 300) {
+  // 免手動授權備援通道：自動透過 GitHub Releases 附屬教材庫直傳（免佔 Git 容量）
+  if (HUB_CONFIG.GITHUB_PAT && sizeBytes <= 36 * 1024 * 1024) {
     return jsonResponse({
-      ok: false,
-      message: `雲端硬碟續傳通道建立失敗 (${code})：${res.getContentText().slice(0, 200)}`
+      ok: true,
+      mode: "github_release_asset",
+      finalName: finalName,
+      displayLabel: rawName,
+      ext: ext.replace(/^\./, "").toUpperCase() || "FILE"
     });
   }
 
-  const hdrs = res.getAllHeaders ? res.getAllHeaders() : res.getHeaders();
-  let sessionUri = "";
-  Object.keys(hdrs || {}).forEach((k) => {
-    if (k.toLowerCase() === "location") {
-      sessionUri = Array.isArray(hdrs[k]) ? hdrs[k][0] : hdrs[k];
-    }
-  });
-
-  if (!sessionUri) {
-    return jsonResponse({ ok: false, message: "未取得 Google Drive 上傳通道網址 (Location)" });
-  }
-
   return jsonResponse({
-    ok: true,
-    sessionUri: sessionUri,
-    finalName: finalName,
-    displayLabel: rawName,
-    ext: ext.replace(/^\./, "").toUpperCase() || "FILE"
+    ok: false,
+    message:
+      "超過 36 MB（最高 200 MB）之超大型教材，請開啟「Mac 本機工作台 (http://localhost:8788/studio.html)」直接拖曳上傳（直傳 GitHub Releases 高速檔案庫），或至 Apps Script 點擊一次「▷ 執行」授權雲端硬碟寫入權限。"
   });
 }
 
@@ -2449,6 +2600,10 @@ function handleStudioCloudApi(payload) {
 
     if (method === "POST" && subPath === "/resources/finalize-upload") {
       return handleFinalizeResourceUpload(data);
+    }
+
+    if (method === "POST" && subPath === "/resources/upload-release-asset") {
+      return handleUploadResourceReleaseAsset(data);
     }
 
     if (method === "GET" && subPath === "/item") {
