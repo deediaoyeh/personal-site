@@ -8,16 +8,16 @@
     content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' blob: https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; frame-src 'self' blob: https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self' https://deediao-studio.netlify.app https://raw.githubusercontent.com https://www.googleapis.com https://www.youtube.com https://script.google.com https://script.googleusercontent.com; object-src 'none'; base-uri 'self'; form-action 'self'"
   />
   <title>書齋離線工作台 · Offline Website & HTML Studio</title>
-  <link rel="stylesheet" href="./styles.css?v=20261127054435" />
-  <link rel="stylesheet" href="./theme.custom.css?v=20261127054435" />
-  <link rel="stylesheet" href="./studio.css?v=20261127054435" />
+  <link rel="stylesheet" href="./styles.css?v=20261127061154" />
+  <link rel="stylesheet" href="./theme.custom.css?v=20261127061154" />
+  <link rel="stylesheet" href="./studio.css?v=20261127061154" />
 </head>
 <body class="studio-body">
   <!-- 頂部工作台工具列 -->
   <header class="studio-topbar">
     <div class="studio-brand">
       <span class="studio-badge mono-label">OFFLINE STUDIO</span>
-      <span id="studio-version-badge" class="studio-version-pill mono-label" title="目前站台版本編號（每次更動前皆自動打包備份，可隨時一鍵回溯）">v1.3.2</span>
+      <span id="studio-version-badge" class="studio-version-pill mono-label" title="目前站台版本編號（每次更動前皆自動打包備份，可隨時一鍵回溯）">v1.4.0</span>
       <strong class="studio-title">書齋離線編輯工作台</strong>
       <span id="studio-status" class="studio-status">本機直寫模式 · 斷網可用</span>
     </div>
@@ -95,21 +95,27 @@
             </div>
 
             <details id="doc-more-fields-details" class="doc-more-fields span-2">
-              <summary class="doc-more-fields-summary">▸ 選填設定：列表摘要、📎 本篇附屬教材／資料庫按鈕、網址代稱與日期（留空皆會自動處理）</summary>
+              <summary class="doc-more-fields-summary">▸ 選填設定：📎 本篇附屬教材（支援多檔拖曳直接上傳 ≤ 200MB）、列表摘要、網址與日期</summary>
               <div class="doc-more-fields-grid">
+                <div class="resource-manager-box">
+                  <span class="field-label">📎 本篇附屬教材、簡報、學習單與資料庫（可一次拖曳多個檔案直接上傳，單檔上限 200 MB）</span>
+                  <div id="resource-dropzone" class="resource-dropzone">
+                    📂 將 PDF、PPTX、Word、ZIP、影片或講義<strong>多個檔案直接拖曳至此上傳</strong>（單檔 ≤ 200 MB），或
+                    <button type="button" id="resource-browse-btn" class="tool-btn media-accent-btn">選擇多個檔案</button>
+                    <input type="file" id="resource-multi-file-input" multiple hidden />
+                  </div>
+                  <div id="resource-upload-progress-list" class="resource-progress-list"></div>
+                  <div class="resource-ext-link-row">
+                    <input type="text" id="doc-resource-label" class="studio-field-input" placeholder="或貼外部連結名稱（如：開啟 NotebookLM 資料庫）" />
+                    <input type="url" id="doc-resource-url" class="studio-field-input mono-label" placeholder="https://..." />
+                    <button type="button" id="btn-add-ext-resource" class="studio-btn studio-btn-outline">＋ 加入連結</button>
+                  </div>
+                  <div id="attached-resources-list" class="attached-resources-list"></div>
+                </div>
+
                 <label class="field-block span-2">
                   <span class="field-label">列表摘要 / 導言（選填 — 留空時會自動擷取內文前兩句）</span>
                   <textarea id="doc-summary" rows="2" class="studio-field-input" placeholder="留空即可自動擷取內文開頭；若想自訂首頁與社群預覽卡摘要可在此填寫⋯"></textarea>
-                </label>
-
-                <label class="field-block">
-                  <span class="field-label">📎 附屬教材／資料庫按鈕名稱（選填）</span>
-                  <input type="text" id="doc-resource-label" class="studio-field-input" placeholder="例如：開啟學習歷程 NotebookLM 資料庫" />
-                </label>
-
-                <label class="field-block">
-                  <span class="field-label">📎 附屬教材／簡報／學習單網址（選填，填寫後文首自動顯示按鈕）</span>
-                  <input type="url" id="doc-resource-url" class="studio-field-input mono-label" placeholder="https://..." />
                 </label>
 
                 <label class="field-block">
@@ -611,7 +617,7 @@
           </p>
 
           <div class="cloud-endpoints-box mono-label">
-            <div>目前站台版本: <strong id="display-site-version">v1.3.2</strong>（變更前自動備份於 <code>backups/personal-site/</code>）</div>
+            <div>目前站台版本: <strong id="display-site-version">v1.4.0</strong>（變更前自動備份於 <code>backups/personal-site/</code>）</div>
             <div>GitHub 倉庫網址: <strong id="display-github-repo">https://github.com/deediaoyeh/personal-site</strong></div>
             <div>GitHub Pages 主站: <strong id="display-github-pages">https://deediaoyeh.github.io/personal-site/</strong></div>
             <div>Netlify 備份站網址: <strong>https://deediao-studio.netlify.app</strong></div>
@@ -624,6 +630,56 @@
           </button>
 
           <pre id="sync-log-output" class="sync-log-box">準備就緒。離線編輯可隨時透過 ⌘S 存檔，連網時再點擊上方按鈕同步即可。</pre>
+
+          <!-- ==================== 電子報預設時間自動上傳與派送狀態看板 ==================== -->
+          <div class="nl-schedule-section">
+            <div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:10px;">
+              <div>
+                <span class="mono-label" style="font-size:0.72rem; color:var(--accent);">NEWSLETTER SCHEDULE &amp; DELIVERY LEDGER</span>
+                <h2 class="pane-section-title" style="margin:3px 0 0;">電子報預設排程上傳與訂閱者派送看板</h2>
+              </div>
+              <button type="button" id="nl-refresh-records-btn" class="studio-btn studio-btn-ghost">↻ 重新整理派送狀態</button>
+            </div>
+
+            <p class="sync-explain" style="margin-bottom:14px;">
+              除了立即發佈與寄送外，你也可以在此選擇一期電子報並<strong>手動預設指定時間</strong>；時間到達時（即使電腦關機），雲端中樞會自動將該期電子報上架至公開網站並完成所有有效訂閱者派送。
+            </p>
+
+            <div class="nl-schedule-controls">
+              <label class="field-block">
+                <span class="field-label">選擇欲排程之電子報期數</span>
+                <select id="nl-schedule-target-select" class="studio-field-input">
+                  <option value="__current__">目前寫作台開啟中的電子報</option>
+                </select>
+              </label>
+
+              <label class="field-block">
+                <span class="field-label">預設自動上傳與派送時間</span>
+                <input type="datetime-local" id="nl-schedule-datetime" class="studio-field-input mono-label" />
+              </label>
+
+              <button type="button" id="nl-set-schedule-btn" class="studio-btn studio-btn-primary" style="height:36px;">
+                ⏰ 設定預設時間上傳＋派送
+              </button>
+            </div>
+
+            <div class="analytics-table-wrap" style="background:var(--bg-elevated); border:1px solid var(--rule);">
+              <table class="analytics-table">
+                <thead>
+                  <tr>
+                    <th style="width:92px;">電子報編號</th>
+                    <th>電子報標題 / 主旨</th>
+                    <th style="width:142px;">電子報形成時間</th>
+                    <th style="width:162px;">派送時間（預定／完成）</th>
+                    <th style="width:190px;">是否完成訂閱者派送</th>
+                  </tr>
+                </thead>
+                <tbody id="nl-records-tbody">
+                  <tr><td colspan="5" style="color:var(--ink-muted); text-align:center; padding:22px;">點選此分頁自動載入電子報派送紀錄⋯</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -883,10 +939,10 @@
     </div>
   </div>
 
-  <script src="./site.config.js?v=20261127054435"></script>
-  <script src="./studio-cloud-client.js?v=20261127054435"></script>
-  <script src="./studio.js?v=20261127054435"></script>
-  <script src="./studio-media.js?v=20261127054435"></script>
-  <script src="./studio-analytics.js?v=20261127054435"></script>
+  <script src="./site.config.js?v=20261127061154"></script>
+  <script src="./studio-cloud-client.js?v=20261127061154"></script>
+  <script src="./studio.js?v=20261127061154"></script>
+  <script src="./studio-media.js?v=20261127061154"></script>
+  <script src="./studio-analytics.js?v=20261127061154"></script>
 </body>
 </html>

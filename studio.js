@@ -78,6 +78,8 @@
       originalType: "",
       isNew: false
     },
+    attachedResources: [],
+    nlRecords: [],
     dirty: false,
     dirtyScopes: {
       content: false,
@@ -180,6 +182,7 @@
       issue: document.getElementById("doc-issue")?.value || "",
       resourceLabel: document.getElementById("doc-resource-label")?.value || "",
       resourceUrl: document.getElementById("doc-resource-url")?.value || "",
+      attachedResources: state.attachedResources || [],
       summary: document.getElementById("doc-summary")?.value || "",
       body: bodyVal
     };
@@ -262,6 +265,8 @@
         document.getElementById("doc-issue").value = snap.issue || "";
         document.getElementById("doc-resource-label").value = snap.resourceLabel || "";
         document.getElementById("doc-resource-url").value = snap.resourceUrl || "";
+        state.attachedResources = Array.isArray(snap.attachedResources) ? snap.attachedResources : [];
+        renderAttachedResourcesList();
         document.getElementById("doc-summary").value = snap.summary || "";
         document.getElementById("doc-body").value = snap.body || "";
         document.getElementById("doc-wysiwyg").innerHTML =
@@ -352,6 +357,10 @@
         document.querySelectorAll(".studio-panel").forEach((panel) => {
           panel.hidden = panel.id !== `tab-${state.activeTab}`;
         });
+        if (state.activeTab === "sync") {
+          populateScheduleLetterPicker();
+          loadNewsletterRecords();
+        }
       });
     });
 
@@ -493,8 +502,31 @@
     document.getElementById("doc-stage").value = meta.stage || "seedling";
     document.getElementById("doc-notecode").value = meta.noteCode || "";
     document.getElementById("doc-issue").value = meta.issue || "";
-    document.getElementById("doc-resource-label").value = meta.resourceLabel || "";
-    document.getElementById("doc-resource-url").value = meta.resourceUrl || "";
+    document.getElementById("doc-resource-label").value = "";
+    document.getElementById("doc-resource-url").value = "";
+
+    const loadedRes = [];
+    if (meta.resources) {
+      try {
+        const parsed = JSON.parse(meta.resources);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((r) => {
+            if (r && r.url) loadedRes.push({ ...r });
+          });
+        }
+      } catch (_) {}
+    }
+    if (meta.resourceUrl && !loadedRes.some((r) => r.url === meta.resourceUrl)) {
+      loadedRes.push({
+        label: meta.resourceLabel || "開啟本篇附屬教材／資料庫",
+        url: meta.resourceUrl,
+        ext: "LINK",
+        sizeLabel: ""
+      });
+    }
+    state.attachedResources = loadedRes;
+    renderAttachedResourcesList();
+
     document.getElementById("doc-summary").value = meta.summary || "";
     document.getElementById("doc-body").value = body || "";
     document.getElementById("doc-wysiwyg").innerHTML =
@@ -502,7 +534,7 @@
 
     const moreDetails = document.getElementById("doc-more-fields-details");
     if (moreDetails) {
-      moreDetails.open = Boolean(meta.resourceUrl);
+      moreDetails.open = state.attachedResources.length > 0;
     }
 
     applyEditorModeUI(state.docFormat === "html" ? "wysiwyg" : "markdown", false);
@@ -530,6 +562,8 @@
     document.getElementById("doc-issue").value = docType === "letter" ? String(count) : "";
     document.getElementById("doc-resource-label").value = "";
     document.getElementById("doc-resource-url").value = "";
+    state.attachedResources = [];
+    renderAttachedResourcesList();
     document.getElementById("doc-summary").value = "";
     const moreDetails = document.getElementById("doc-more-fields-details");
     if (moreDetails) moreDetails.open = false;
@@ -833,6 +867,9 @@
     document.getElementById("close-tablet-preview-btn")?.addEventListener("click", () => {
       contentGrid?.classList.remove("is-tablet-preview");
     });
+
+    bindAttachedResourcesManager();
+    bindNewsletterScheduleEvents();
 
     // Markdown 工具列
     document.querySelectorAll("[data-md]").forEach((btn) => {
@@ -1369,6 +1406,10 @@
       const data = await res.json();
       if (!res.ok || data.ok === false) throw new Error(data.message || "推送草稿失敗");
       setStatus(data.message || `✓ 已將第 ${issue} 期草稿安全送入 Google 試算表發信台！`, "is-saved");
+      if (Array.isArray(data.records)) {
+        state.nlRecords = data.records;
+        renderNewsletterRecordsTable();
+      }
     } catch (err) {
       setStatus(`推送失敗：${err.message}`, "is-dirty");
     } finally {
@@ -1422,11 +1463,540 @@
       const data = await res.json();
       if (!res.ok || data.ok === false) throw new Error(data.message || "寄送失敗");
       setStatus(data.message || (isLive ? "🎉 已成功群發本期電子報！" : "✓ 測試信已寄出！"), "is-saved");
+      if (Array.isArray(data.records)) {
+        state.nlRecords = data.records;
+        renderNewsletterRecordsTable();
+      }
     } catch (err) {
       setStatus(`寄送失敗：${err.message}`, "is-dirty");
     } finally {
       if (triggerBtn) triggerBtn.disabled = false;
     }
+  }
+
+  // =========================================================================
+  // 附屬教材多檔案拖曳直接上傳（支援單檔 ≤ 200MB 雲端硬碟斷點續傳 ＋ 多檔即時進度條）
+  // =========================================================================
+  const MAX_ATTACH_BYTES = 200 * 1024 * 1024;
+
+  function renderAttachedResourcesList() {
+    const wrap = document.getElementById("attached-resources-list");
+    if (!wrap) return;
+    if (!state.attachedResources.length) {
+      wrap.innerHTML = "";
+      return;
+    }
+    wrap.innerHTML = state.attachedResources
+      .map((r, idx) => {
+        const badge = [r.ext || "FILE", r.sizeLabel || ""].filter(Boolean).join(" · ");
+        return `
+          <div class="attached-resource-row" data-res-idx="${idx}">
+            <span class="attached-resource-badge mono-label">${escapeHtml(badge)}</span>
+            <input type="text" class="studio-field-input" data-res-label-idx="${idx}" value="${escapeAttr(r.label || "開啟教材檔案")}" title="可修改前台按鈕顯示名稱" />
+            <a href="${escapeAttr(r.url)}" target="_blank" rel="noopener noreferrer" class="tool-btn">預覽 ↗</a>
+            <button type="button" class="tool-btn danger-btn" data-res-remove-idx="${idx}" style="margin-left:0;">✕ 移除</button>
+          </div>
+        `;
+      })
+      .join("");
+
+    wrap.querySelectorAll("[data-res-label-idx]").forEach((inp) => {
+      inp.addEventListener("input", () => {
+        const i = Number(inp.getAttribute("data-res-label-idx"));
+        if (state.attachedResources[i]) {
+          state.attachedResources[i].label = inp.value.trim();
+          markDirty("content");
+        }
+      });
+    });
+
+    wrap.querySelectorAll("[data-res-remove-idx]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const i = Number(btn.getAttribute("data-res-remove-idx"));
+        state.attachedResources.splice(i, 1);
+        renderAttachedResourcesList();
+        markDirty("content");
+      });
+    });
+  }
+
+  function bindAttachedResourcesManager() {
+    const dropzone = document.getElementById("resource-dropzone");
+    const browseBtn = document.getElementById("resource-browse-btn");
+    const fileInput = document.getElementById("resource-multi-file-input");
+    const addExtBtn = document.getElementById("btn-add-ext-resource");
+
+    browseBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      fileInput.value = "";
+      fileInput.click();
+    });
+    dropzone?.addEventListener("click", (e) => {
+      if (e.target === browseBtn) return;
+      fileInput.value = "";
+      fileInput.click();
+    });
+
+    fileInput?.addEventListener("change", async () => {
+      if (fileInput.files && fileInput.files.length > 0) {
+        await uploadMultipleResourceFiles(Array.from(fileInput.files));
+      }
+    });
+
+    dropzone?.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.add("is-drag-over");
+    });
+    dropzone?.addEventListener("dragleave", () => {
+      dropzone.classList.remove("is-drag-over");
+    });
+    dropzone?.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.remove("is-drag-over");
+      const files = e.dataTransfer?.files ? Array.from(e.dataTransfer.files) : [];
+      if (files.length > 0) {
+        await uploadMultipleResourceFiles(files);
+      }
+    });
+
+    addExtBtn?.addEventListener("click", () => {
+      const urlInp = document.getElementById("doc-resource-url");
+      const lblInp = document.getElementById("doc-resource-label");
+      const url = (urlInp?.value || "").trim();
+      if (!url) {
+        setStatus("請先輸入附屬教材或資料庫網址", "is-dirty");
+        urlInp?.focus();
+        return;
+      }
+      const label = (lblInp?.value || "").trim() || "開啟本篇研習教材／資料庫";
+      state.attachedResources.push({ label, url, ext: "LINK", sizeLabel: "" });
+      if (urlInp) urlInp.value = "";
+      if (lblInp) lblInp.value = "";
+      renderAttachedResourcesList();
+      markDirty("content");
+      setStatus("✓ 已加入外部教材連結（按 ⌘S 儲存文章即生效）", "is-dirty");
+    });
+  }
+
+  function putBinaryWithProgress(url, file, headers, onPct, method = "PUT") {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open(method, url, true);
+      Object.entries(headers || {}).forEach(([k, v]) => xhr.setRequestHeader(k, v));
+      xhr.upload.onprogress = (ev) => {
+        if (ev.lengthComputable && onPct) {
+          onPct(Math.min(99, Math.round((ev.loaded / ev.total) * 100)));
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(xhr.responseText || "{}");
+        } else {
+          reject(new Error(`HTTP ${xhr.status}: ${(xhr.responseText || "").slice(0, 140)}`));
+        }
+      };
+      xhr.onerror = () => reject(new Error("網路傳輸中斷或跨網域連線失敗"));
+      xhr.send(file);
+    });
+  }
+
+  async function uploadSingleResourceFile(file, onPct) {
+    // 優先走 Google Drive 斷點續傳通道（支援單檔最高 200 MB，不佔用 GitHub 倉庫容量限制）
+    try {
+      const initRes = await fetch("/api/studio/resources/init-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name,
+          mimeType: file.type || "application/octet-stream",
+          sizeBytes: file.size,
+          origin: window.location.origin
+        })
+      });
+      const initData = await initRes.json();
+      if (!initRes.ok || !initData.ok || !initData.sessionUri) {
+        throw new Error(initData.message || "無法建立雲端續傳通道");
+      }
+
+      const rawResp = await putBinaryWithProgress(
+        initData.sessionUri,
+        file,
+        { "Content-Type": file.type || "application/octet-stream" },
+        onPct,
+        "PUT"
+      );
+      const driveObj = JSON.parse(rawResp || "{}");
+      if (!driveObj.id) {
+        throw new Error("未取得雲端硬碟檔案識別碼");
+      }
+      onPct(99);
+      const finRes = await fetch("/api/studio/resources/finalize-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileId: driveObj.id,
+          displayLabel: file.name,
+          sizeBytes: file.size
+        })
+      });
+      const finData = await finRes.json();
+      if (!finRes.ok || !finData.ok) {
+        throw new Error(finData.message || "設定檔案公開檢視權限失敗");
+      }
+      onPct(100);
+      return finData.resource;
+    } catch (cloudErr) {
+      // 若處於 Mac 本機離線環境，自動退回本機 200 MB 串流直寫備援
+      if (!window.__STUDIO_IS_CLOUD__) {
+        const rawLocal = await putBinaryWithProgress(
+          `/api/studio/resources/upload-local-stream?name=${encodeURIComponent(file.name)}`,
+          file,
+          {
+            "Content-Type": file.type || "application/octet-stream",
+            "X-Studio-CSRF": state.csrfToken || ""
+          },
+          onPct,
+          "POST"
+        );
+        const localData = JSON.parse(rawLocal || "{}");
+        if (localData && localData.ok && localData.resource) {
+          onPct(100);
+          return localData.resource;
+        }
+      }
+      throw cloudErr;
+    }
+  }
+
+  async function uploadMultipleResourceFiles(files) {
+    const progWrap = document.getElementById("resource-upload-progress-list");
+    if (!progWrap) return;
+
+    const validFiles = [];
+    for (const f of files) {
+      if (f.size > MAX_ATTACH_BYTES) {
+        setStatus(`⚠️ 檔案「${f.name}」(${(f.size / 1048576).toFixed(1)} MB) 超過 200 MB 上限，已略過`, "is-dirty");
+      } else {
+        validFiles.push(f);
+      }
+    }
+    if (!validFiles.length) return;
+
+    const moreDetails = document.getElementById("doc-more-fields-details");
+    if (moreDetails) moreDetails.open = true;
+
+    progWrap.innerHTML = validFiles
+      .map((f, i) => {
+        const szMb = f.size < 1048576 ? `${(f.size / 1024).toFixed(1)} KB` : `${(f.size / 1048576).toFixed(1)} MB`;
+        return `
+          <div class="resource-progress-item" id="res-prog-item-${i}">
+            <div style="display:flex; justify-content:space-between; gap:8px;">
+              <span>[${i + 1}/${validFiles.length}] ${escapeHtml(f.name)} (${szMb})</span>
+              <span class="mono-label" id="res-prog-pct-${i}">準備中⋯</span>
+            </div>
+            <div class="resource-progress-bar-bg">
+              <div class="resource-progress-bar-fill" id="res-prog-bar-${i}" style="width:2%;"></div>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+
+    let okCnt = 0;
+    for (let i = 0; i < validFiles.length; i++) {
+      const f = validFiles[i];
+      const pctEl = document.getElementById(`res-prog-pct-${i}`);
+      const barEl = document.getElementById(`res-prog-bar-${i}`);
+      setStatus(`正在上傳附屬教材 (${i + 1}/${validFiles.length})：${f.name}⋯`);
+      try {
+        const resourceObj = await uploadSingleResourceFile(f, (pct) => {
+          if (pctEl) pctEl.textContent = `${pct}%`;
+          if (barEl) barEl.style.width = `${pct}%`;
+        });
+        state.attachedResources.push(resourceObj);
+        renderAttachedResourcesList();
+        markDirty("content");
+        if (pctEl) pctEl.textContent = "✓ 完成";
+        okCnt++;
+      } catch (err) {
+        if (pctEl) pctEl.textContent = `✕ 失敗：${err.message}`;
+        setStatus(`上傳「${f.name}」失敗：${err.message}`, "is-dirty");
+      }
+    }
+
+    if (okCnt > 0) {
+      setStatus(`✓ 已成功上傳並掛載 ${okCnt} 個附屬教材檔案（請按「儲存 ⌘S」寫入文章）`, "is-saved");
+      setTimeout(() => {
+        if (okCnt === validFiles.length && progWrap) progWrap.innerHTML = "";
+      }, 3200);
+    }
+  }
+
+  // =========================================================================
+  // 電子報手動預設排程時間上傳＋派送 ＆ 派送狀態看板
+  // =========================================================================
+  function defaultNextSundayMorningLocal() {
+    const now = new Date();
+    const daysUntilSun = (7 - now.getDay()) % 7 || 7;
+    const target = new Date(now.getTime() + daysUntilSun * 86400000);
+    target.setHours(8, 0, 0, 0);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}T08:00`;
+  }
+
+  function populateScheduleLetterPicker() {
+    const sel = document.getElementById("nl-schedule-target-select");
+    const dtInp = document.getElementById("nl-schedule-datetime");
+    if (dtInp && !dtInp.value) {
+      dtInp.value = defaultNextSundayMorningLocal();
+    }
+    if (!sel) return;
+    const letters = (state.manifest?.items || []).filter((it) => it.type === "letter");
+    const currentOpt = `<option value="__current__">目前寫作台開啟中的電子報草稿</option>`;
+    const existingOpts = letters
+      .map((it) => {
+        const num = String(it.issue || "01").padStart(2, "0");
+        return `<option value="${escapeAttr(it.slug)}">№ ${escapeHtml(num)} · ${escapeHtml(it.title)}</option>`;
+      })
+      .join("");
+    sel.innerHTML = currentOpt + existingOpts;
+  }
+
+  function formatLedgerTime(iso) {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso).slice(0, 16);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  async function loadNewsletterRecords() {
+    const tbody = document.getElementById("nl-records-tbody");
+    if (!tbody) return;
+    try {
+      const res = await fetch(`/api/studio/newsletter/records?t=${Date.now()}`);
+      const data = await res.json();
+      if (res.ok && data.ok && Array.isArray(data.records)) {
+        state.nlRecords = data.records;
+      }
+    } catch (_) {}
+    renderNewsletterRecordsTable();
+  }
+
+  function renderNewsletterRecordsTable() {
+    const tbody = document.getElementById("nl-records-tbody");
+    if (!tbody) return;
+
+    // 合併雲端試算表派送紀錄與目前已建檔之網站電子報（確保舊期數亦完整列出編號與狀態）
+    const merged = [...(state.nlRecords || [])];
+    const knownIssues = new Set(merged.map((r) => String(r.issue || "").padStart(2, "0")));
+    (state.manifest?.items || [])
+      .filter((it) => it.type === "letter")
+      .forEach((it) => {
+        const iss = String(it.issue || "01").padStart(2, "0");
+        if (!knownIssues.has(iss)) {
+          knownIssues.add(iss);
+          merged.push({
+            rowNumber: 0,
+            issue: iss,
+            subject: it.title,
+            status: "draft",
+            createdAt: it.date ? `${it.date}T08:00:00` : "",
+            scheduledAt: "",
+            sentAt: "",
+            sentCount: 0,
+            completed: false,
+            slug: it.slug
+          });
+        }
+      });
+
+    merged.sort((a, b) => Number(b.issue || 0) - Number(a.issue || 0));
+
+    if (!merged.length) {
+      tbody.innerHTML = `<tr><td colspan="5" style="color:var(--ink-muted); text-align:center; padding:22px;">尚無任何電子報期數紀錄。可點選上方「✨ 自動彙整最新長文＋筆記生成新一期」建立。</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = merged
+      .map((r) => {
+        const issueBadge = `№ ${String(r.issue || "01").padStart(2, "0")}`;
+        const createdText = formatLedgerTime(r.createdAt);
+        let dispatchTimeHtml = "—";
+        let statusHtml = "";
+
+        if (r.status === "sent" || r.completed) {
+          dispatchTimeHtml = `<span style="color:var(--accent-moss, #485643);">完成：${escapeHtml(formatLedgerTime(r.sentAt))}</span>`;
+          const cntNote = r.sentCount > 0 ? `（寄達 ${r.sentCount} 人）` : "";
+          statusHtml = `<span class="nl-dispatch-pill mono-label is-sent">✓ 已完成派送${escapeHtml(cntNote)}</span>`;
+        } else if (r.status === "scheduled") {
+          dispatchTimeHtml = `<strong style="color:var(--accent, #6e5039);">預定：${escapeHtml(formatLedgerTime(r.scheduledAt))}</strong>`;
+          statusHtml = `
+            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+              <span class="nl-dispatch-pill mono-label is-scheduled">⏰ 排程等待派送</span>
+              <button type="button" class="tool-btn danger-btn" style="margin-left:0;" data-cancel-sched-row="${r.rowNumber || 0}" data-cancel-sched-issue="${escapeAttr(r.issue)}">取消</button>
+            </div>
+          `;
+        } else {
+          dispatchTimeHtml = `<span style="color:var(--ink-muted);">尚未排程</span>`;
+          statusHtml = `<span class="nl-dispatch-pill mono-label is-draft">否 · 草稿未派送</span>`;
+        }
+
+        return `
+          <tr>
+            <td class="mono-label" style="font-weight:600;">${escapeHtml(issueBadge)}</td>
+            <td><strong>${escapeHtml(r.subject || "未命名電子報")}</strong></td>
+            <td class="mono-label" style="font-size:0.78rem; white-space:nowrap;">${escapeHtml(createdText)}</td>
+            <td class="mono-label" style="font-size:0.78rem; white-space:nowrap;">${dispatchTimeHtml}</td>
+            <td>${statusHtml}</td>
+          </tr>
+        `;
+      })
+      .join("");
+
+    tbody.querySelectorAll("[data-cancel-sched-issue]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const rowNumber = Number(btn.getAttribute("data-cancel-sched-row") || 0);
+        const issue = btn.getAttribute("data-cancel-sched-issue") || "";
+        btn.disabled = true;
+        try {
+          const res = await fetch("/api/studio/newsletter/cancel-schedule", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rowNumber, issue })
+          });
+          const data = await res.json();
+          if (data.ok) {
+            state.nlRecords = data.records || [];
+            renderNewsletterRecordsTable();
+            setStatus(data.message || "已取消排程", "is-saved");
+          }
+        } catch (err) {
+          setStatus(`取消排程失敗：${err.message}`, "is-dirty");
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+
+  function bindNewsletterScheduleEvents() {
+    document.getElementById("nl-refresh-records-btn")?.addEventListener("click", () => {
+      populateScheduleLetterPicker();
+      loadNewsletterRecords();
+    });
+
+    document.getElementById("nl-set-schedule-btn")?.addEventListener("click", async () => {
+      const selVal = document.getElementById("nl-schedule-target-select")?.value || "__current__";
+      const dtVal = document.getElementById("nl-schedule-datetime")?.value || "";
+      if (!dtVal) {
+        setStatus("請先選擇預設自動上傳與派送的日期與時間", "is-dirty");
+        return;
+      }
+      const schedDate = new Date(dtVal);
+      if (isNaN(schedDate.getTime()) || schedDate.getTime() <= Date.now()) {
+        setStatus("預設派送時間必須晚於現在時間", "is-dirty");
+        return;
+      }
+
+      let issue = "01";
+      let subject = "";
+      let content = "";
+      let slug = "";
+      let rawMd = "";
+
+      if (selVal === "__current__") {
+        if (document.getElementById("doc-type").value !== "letter") {
+          setStatus("目前寫作台開啟的不是電子報；請先在上方下拉選單選擇一期電子報，或切回寫作台建立新一期。", "is-dirty");
+          return;
+        }
+        issue = document.getElementById("doc-issue").value.trim() || "01";
+        subject = document.getElementById("doc-title").value.trim() || `雙週電子報 第 ${issue} 期`;
+        slug = document.getElementById("doc-slug").value.trim() || `letter-${todayStr().replace(/-/g, "")}-${issue}`;
+        content =
+          state.editorMode === "wysiwyg"
+            ? document.getElementById("doc-wysiwyg").innerHTML.trim()
+            : document.getElementById("doc-body").value.trim();
+        const summary = document.getElementById("doc-summary").value.trim() || subject;
+        rawMd = [
+          "---",
+          `title: ${subject}`,
+          `slug: ${slug}`,
+          "type: letter",
+          `format: ${state.docFormat || "markdown"}`,
+          `issue: ${issue}`,
+          `date: ${dtVal.slice(0, 10)}`,
+          "tags: 雙週電子報",
+          `summary: ${summary}`,
+          "---",
+          "",
+          content,
+          ""
+        ].join("\n");
+      } else {
+        const res = await fetch(`/api/studio/item?type=letter&slug=${encodeURIComponent(selVal)}`);
+        if (!res.ok) {
+          setStatus("無法讀取所選電子報內容", "is-dirty");
+          return;
+        }
+        const itemData = await res.json();
+        issue = String(itemData.meta?.issue || "01");
+        subject = itemData.meta?.title || selVal;
+        slug = selVal;
+        content = (itemData.body || "").trim();
+        rawMd = [
+          "---",
+          `title: ${subject}`,
+          `slug: ${slug}`,
+          "type: letter",
+          `format: ${itemData.meta?.format || "markdown"}`,
+          `issue: ${issue}`,
+          `date: ${itemData.meta?.date || dtVal.slice(0, 10)}`,
+          `tags: ${itemData.meta?.tags || "雙週電子報"}`,
+          `summary: ${itemData.meta?.summary || subject}`,
+          "---",
+          "",
+          content,
+          ""
+        ].join("\n");
+      }
+
+      if (!content) {
+        setStatus("電子報內容不可為空", "is-dirty");
+        return;
+      }
+
+      const btn = document.getElementById("nl-set-schedule-btn");
+      btn.disabled = true;
+      setStatus("正在將電子報寫入雲端排程器⋯");
+      try {
+        const res = await fetch("/api/studio/newsletter/schedule", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            issue,
+            subject,
+            content,
+            scheduledAt: schedDate.toISOString(),
+            slug,
+            rawMd
+          })
+        });
+        const data = await res.json();
+        if (!res.ok || data.ok === false) throw new Error(data.message || "排程設定失敗");
+        if (Array.isArray(data.records)) {
+          state.nlRecords = data.records;
+        }
+        renderNewsletterRecordsTable();
+        setStatus(data.message || "⏰ 已完成預設時間排程！", "is-saved");
+      } catch (err) {
+        setStatus(`排程設定失敗：${err.message}`, "is-dirty");
+      } finally {
+        btn.disabled = false;
+      }
+    });
   }
 
   function collectConfigFromForms() {
@@ -1703,8 +2273,20 @@
           document.getElementById("doc-summary").value = summaryVal;
         }
 
-        const resUrl = document.getElementById("doc-resource-url")?.value.trim() || "";
-        const resLabel = document.getElementById("doc-resource-label")?.value.trim() || "";
+        // 若使用者在外部連結框填了網址但未按「＋加入連結」，存檔時自動一併收入
+        const pendingUrl = document.getElementById("doc-resource-url")?.value.trim() || "";
+        const pendingLbl = document.getElementById("doc-resource-label")?.value.trim() || "";
+        if (pendingUrl && !state.attachedResources.some((r) => r.url === pendingUrl)) {
+          state.attachedResources.push({
+            label: pendingLbl || "開啟本篇研習教材／資料庫",
+            url: pendingUrl,
+            ext: "LINK",
+            sizeLabel: ""
+          });
+          document.getElementById("doc-resource-url").value = "";
+          document.getElementById("doc-resource-label").value = "";
+          renderAttachedResourcesList();
+        }
 
         const meta = {
           title: document.getElementById("doc-title").value.trim() || "未命名文章",
@@ -1716,9 +2298,10 @@
           links: [...new Set(wikiSlugs)].join(", "),
           summary: summaryVal
         };
-        if (resUrl) {
-          meta.resourceUrl = resUrl;
-          meta.resourceLabel = resLabel || "開啟本篇研習教材／資料庫";
+        if (state.attachedResources.length > 0) {
+          meta.resources = JSON.stringify(state.attachedResources);
+          meta.resourceUrl = state.attachedResources[0].url;
+          meta.resourceLabel = state.attachedResources[0].label || "開啟本篇研習教材／資料庫";
         }
 
         if (docType === "note") {

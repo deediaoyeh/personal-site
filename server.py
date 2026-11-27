@@ -44,9 +44,11 @@ TYPE_TO_FOLDER = {
 ALLOWED_UPLOAD_EXTS = {
     ".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg", ".avif", ".heic",
     ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
-    ".csv", ".txt", ".md", ".zip", ".epub",
-    ".mp4", ".webm", ".mov", ".mp3", ".m4a", ".wav",
+    ".key", ".pages", ".numbers", ".odt", ".ods", ".odp",
+    ".csv", ".txt", ".md", ".json", ".zip", ".7z", ".rar", ".epub",
+    ".mp4", ".webm", ".mov", ".m4v", ".mp3", ".m4a", ".wav",
 }
+MAX_RESOURCE_UPLOAD_BYTES = 200 * 1024 * 1024  # 200 MB
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg", ".avif"}
 VIDEO_EXTS = {".mp4", ".webm", ".mov"}
@@ -494,7 +496,7 @@ def compose_markdown(meta: dict, body: str) -> str:
     ordered_keys = [
         "title", "slug", "type", "format", "noteCode", "stage",
         "issue", "date", "readingTime", "tags", "links",
-        "resourceLabel", "resourceUrl", "summary",
+        "resourceLabel", "resourceUrl", "resources", "summary",
     ]
     lines = ["---"]
     for k in ordered_keys:
@@ -997,6 +999,14 @@ class StudioHandler(SimpleHTTPRequestHandler):
                     self._send_json({"ok": False, "message": f"讀取雲端點閱統計失敗：{exc}"}, HTTPStatus.BAD_GATEWAY)
                 return
 
+            if clean_path == "/api/studio/newsletter/records":
+                try:
+                    rec_res = call_newsletter_hub_secure("newsletter_records", {})
+                    self._send_json(rec_res, HTTPStatus.OK if rec_res.get("ok") else HTTPStatus.BAD_REQUEST)
+                except Exception as exc:
+                    self._send_json({"ok": False, "message": f"讀取電子報派送紀錄失敗：{exc}"}, HTTPStatus.BAD_GATEWAY)
+                return
+
             if clean_path == "/api/studio/gdrive/list":
                 qs = parse_qs(parsed.query)
                 folder_id = (qs.get("folderId") or ["root"])[0]
@@ -1060,6 +1070,71 @@ class StudioHandler(SimpleHTTPRequestHandler):
             return
 
         try:
+            # ── 支援單檔最高 200 MB 之二進位串流上傳（本機離線模式備援）──────
+            if clean_path == "/api/studio/resources/upload-local-stream":
+                sess = self._require_auth(require_csrf=True)
+                if not sess:
+                    return
+                qs = parse_qs(parsed.query)
+                raw_name = (qs.get("name") or ["material.bin"])[0]
+                ext = Path(raw_name).suffix.lower()
+                if ext and ext not in ALLOWED_UPLOAD_EXTS:
+                    self._send_json({"ok": False, "message": f"不支援上傳 {ext} 格式檔案"}, HTTPStatus.BAD_REQUEST)
+                    return
+                length = int(self.headers.get("Content-Length", "0"))
+                if length <= 0 or length > MAX_RESOURCE_UPLOAD_BYTES:
+                    self._send_json({"ok": False, "message": "單一檔案大小須介於 1 Byte 至 200 MB 之間"}, HTTPStatus.BAD_REQUEST)
+                    return
+                dest = unique_upload_path(raw_name)
+                remaining = length
+                with dest.open("wb") as out_f:
+                    while remaining > 0:
+                        chunk = self.rfile.read(min(1024 * 1024, remaining))
+                        if not chunk:
+                            break
+                        out_f.write(chunk)
+                        remaining -= len(chunk)
+                st = dest.stat()
+                # 若本機檔案超過 45 MB，自動嘗試透過 gdrive CLI 直傳雲端硬碟避免超過 GitHub 100MB 限制
+                gdrive_bin = find_gdrive_bin()
+                if st.st_size > 45 * 1024 * 1024 and gdrive_bin:
+                    up = subprocess.run(
+                        [gdrive_bin, "mutate", "upload", str(dest), "--parent", "1n_ZQELr2H9f1Zre0rmntedtvyrohcGxS"],
+                        capture_output=True,
+                        text=True,
+                        timeout=300,
+                    )
+                    m_id = re.search(r"ID:\s*([A-Za-z0-9_-]+)", up.stdout or "")
+                    if up.returncode == 0 and m_id:
+                        fid = m_id.group(1)
+                        dest.unlink(missing_ok=True)
+                        self._send_json(
+                            {
+                                "ok": True,
+                                "resource": {
+                                    "fileId": fid,
+                                    "label": raw_name,
+                                    "url": f"https://drive.google.com/file/d/{fid}/view?usp=sharing",
+                                    "sizeLabel": format_size(st.st_size),
+                                    "ext": ext.lstrip(".").upper() or "FILE",
+                                },
+                            }
+                        )
+                        return
+
+                self._send_json(
+                    {
+                        "ok": True,
+                        "resource": {
+                            "label": raw_name,
+                            "url": f"./assets/uploads/{dest.name}",
+                            "sizeLabel": format_size(st.st_size),
+                            "ext": ext.lstrip(".").upper() or "FILE",
+                        },
+                    }
+                )
+                return
+
             data = self._read_json_body()
 
             # ── 認證相關端點 ─────────────────────────────────────────────
@@ -1287,9 +1362,61 @@ class StudioHandler(SimpleHTTPRequestHandler):
                         "issue": str(data.get("issue", "01")),
                         "subject": str(data.get("subject", "")),
                         "content": str(data.get("content", "")),
+                        "createdAt": str(data.get("createdAt", "")),
                     },
                 )
                 self._send_json(live_res, HTTPStatus.OK if live_res.get("ok") else HTTPStatus.BAD_REQUEST)
+                return
+
+            if clean_path == "/api/studio/newsletter/schedule":
+                sched_res = call_newsletter_hub_secure(
+                    "schedule_newsletter",
+                    {
+                        "issue": str(data.get("issue", "01")),
+                        "subject": str(data.get("subject", "")),
+                        "content": str(data.get("content", "")),
+                        "scheduledAt": str(data.get("scheduledAt", "")),
+                        "slug": str(data.get("slug", "")),
+                        "rawMd": str(data.get("rawMd", "")),
+                    },
+                )
+                self._send_json(sched_res, HTTPStatus.OK if sched_res.get("ok") else HTTPStatus.BAD_REQUEST)
+                return
+
+            if clean_path == "/api/studio/newsletter/cancel-schedule":
+                cancel_res = call_newsletter_hub_secure(
+                    "cancel_newsletter_schedule",
+                    {
+                        "rowNumber": int(data.get("rowNumber", 0)),
+                        "issue": str(data.get("issue", "")),
+                    },
+                )
+                self._send_json(cancel_res, HTTPStatus.OK if cancel_res.get("ok") else HTTPStatus.BAD_REQUEST)
+                return
+
+            if clean_path == "/api/studio/resources/init-upload":
+                init_res = call_newsletter_hub_secure(
+                    "resource_init_upload",
+                    {
+                        "filename": str(data.get("filename", "")),
+                        "mimeType": str(data.get("mimeType", "application/octet-stream")),
+                        "sizeBytes": int(data.get("sizeBytes", 0)),
+                        "origin": str(data.get("origin") or f"http://{self.headers.get('Host', 'localhost:8788')}"),
+                    },
+                )
+                self._send_json(init_res, HTTPStatus.OK if init_res.get("ok") else HTTPStatus.BAD_REQUEST)
+                return
+
+            if clean_path == "/api/studio/resources/finalize-upload":
+                fin_res = call_newsletter_hub_secure(
+                    "resource_finalize_upload",
+                    {
+                        "fileId": str(data.get("fileId", "")),
+                        "displayLabel": str(data.get("displayLabel", "")),
+                        "sizeBytes": int(data.get("sizeBytes", 0)),
+                    },
+                )
+                self._send_json(fin_res, HTTPStatus.OK if fin_res.get("ok") else HTTPStatus.BAD_REQUEST)
                 return
 
             self._send_json({"ok": False, "message": "未知的 API 路徑"}, HTTPStatus.NOT_FOUND)

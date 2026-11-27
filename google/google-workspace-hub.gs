@@ -172,8 +172,23 @@ function setupSheets() {
   let draftSheet = ss.getSheetByName(SHEET_ISSUES);
   if (!draftSheet) {
     draftSheet = ss.insertSheet(SHEET_ISSUES);
-    draftSheet.appendRow(["期數", "信件主旨", "信件內容 (純文字或 HTML)", "發送狀態", "發送時間"]);
-    draftSheet.getRange("A1:E1").setFontWeight("bold");
+    draftSheet.appendRow([
+      "期數",
+      "信件主旨",
+      "信件內容 (純文字或 HTML)",
+      "發送狀態",
+      "發送時間",
+      "形成時間 (ISO)",
+      "預定派送時間 (ISO)",
+      "已派送訂戶數",
+      "網站上架封包"
+    ]);
+    draftSheet.getRange("A1:I1").setFontWeight("bold");
+  } else if (draftSheet.getLastColumn() < 9) {
+    draftSheet
+      .getRange("F1:I1")
+      .setValues([["形成時間 (ISO)", "預定派送時間 (ISO)", "已派送訂戶數", "網站上架封包"]])
+      .setFontWeight("bold");
   }
 
   let pvSheet = ss.getSheetByName(SHEET_PAGEVIEWS);
@@ -285,11 +300,16 @@ function doPost(e) {
       return handleStudioCloudApi(payload);
     }
 
-    // 嚴格預設拒絕 (Fail-Closed)：必須持有正確 SYNC_TOKEN 方可寫入或發送電子報
+    // 嚴格預設拒絕 (Fail-Closed)：必須持有正確 SYNC_TOKEN 方可寫入或發送電子報／教材上傳授權
     if (
       payload.action === "save_draft" ||
       payload.action === "send_test_newsletter" ||
-      payload.action === "send_live_newsletter"
+      payload.action === "send_live_newsletter" ||
+      payload.action === "schedule_newsletter" ||
+      payload.action === "cancel_newsletter_schedule" ||
+      payload.action === "newsletter_records" ||
+      payload.action === "resource_init_upload" ||
+      payload.action === "resource_finalize_upload"
     ) {
       if (!constantTimeEqual(String(payload.token || ""), HUB_CONFIG.SYNC_TOKEN)) {
         return jsonResponse({ ok: false, message: "拒絕存取：缺少或無效的同步金鑰 (SYNC_TOKEN)" });
@@ -297,6 +317,11 @@ function doPost(e) {
       if (payload.action === "save_draft") return handleSaveDraftFromStudio(payload);
       if (payload.action === "send_test_newsletter") return handleSendTestNewsletter(payload);
       if (payload.action === "send_live_newsletter") return handleSendLiveNewsletterFromStudio(payload);
+      if (payload.action === "schedule_newsletter") return handleScheduleNewsletter(payload);
+      if (payload.action === "cancel_newsletter_schedule") return handleCancelNewsletterSchedule(payload);
+      if (payload.action === "newsletter_records") return handleGetNewsletterRecords();
+      if (payload.action === "resource_init_upload") return handleInitResourceResumableUpload(payload);
+      if (payload.action === "resource_finalize_upload") return handleFinalizeResourceUpload(payload);
     }
 
     // 嚴格預設拒絕 (Fail-Closed)：必須持有正確 ANALYTICS_READ_KEY 方可讀取點閱儀表板
@@ -488,11 +513,18 @@ function handleSaveDraftFromStudio(payload) {
   if (!content) {
     return jsonResponse({ ok: false, message: "電子報內容不可為空" });
   }
+  const nowIso = new Date().toISOString();
+  const sitePkg = payload.slug && payload.rawMd ? JSON.stringify({ slug: payload.slug, rawMd: payload.rawMd }) : "";
 
-  appendSafeTextRow(draftSheet, [issueStr, subject, content, "draft", ""], [12, 200, 45000, 20, 40]);
+  appendSafeTextRow(
+    draftSheet,
+    [issueStr, subject, content, "draft", "", nowIso, "", "0", sitePkg],
+    [12, 200, 45000, 20, 40, 40, 40, 12, 45000]
+  );
   return jsonResponse({
     ok: true,
-    message: `✓ 已透過安全金鑰將第 ${issueStr} 期草稿寫入試算表 NewsletterDrafts！`
+    records: buildNewsletterRecordsList(),
+    message: `✓ 已將第 ${issueStr} 期草稿寫入試算表 NewsletterDrafts！`
   });
 }
 
@@ -789,17 +821,293 @@ function handleSendLiveNewsletterFromStudio(payload) {
     });
   });
 
+  const nowIso = new Date().toISOString();
+  const createdIso = String(payload.createdAt || nowIso);
   appendSafeTextRow(
     draftSheet,
-    [issueStr, subject, content, "sent", new Date().toISOString()],
-    [12, 200, 45000, 20, 40]
+    [issueStr, subject, content, "sent", nowIso, createdIso, "", String(subs.length), ""],
+    [12, 200, 45000, 20, 40, 40, 40, 12, 45000]
   );
 
   return jsonResponse({
     ok: true,
     sentCount: subs.length,
-    message: `🎉 已正式寄出「${subject}」給 ${subs.length} 位有效訂戶，並歸檔至試算表！`
+    records: buildNewsletterRecordsList(),
+    message: `🎉 已正式寄出「${subject}」給 ${subs.length} 位有效訂戶，並歸檔至派送紀錄！`
   });
+}
+
+/**
+ * 自動管理排程派送之時間觸發器（有待派送排程時每 5 分鐘巡檢一次，全部派送完畢自動移除觸發器）
+ */
+function ensureNewsletterScheduleTrigger(shouldExist) {
+  const triggers = ScriptApp.getProjectTriggers();
+  const existing = triggers.filter((t) => t.getHandlerFunction() === "processScheduledNewsletters");
+  if (shouldExist) {
+    if (existing.length === 0) {
+      ScriptApp.newTrigger("processScheduledNewsletters").timeBased().everyMinutes(5).create();
+    }
+  } else {
+    existing.forEach((t) => {
+      try {
+        ScriptApp.deleteTrigger(t);
+      } catch (_) {}
+    });
+  }
+}
+
+function buildNewsletterRecordsList() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const draftSheet = ss.getSheetByName(SHEET_ISSUES);
+  if (!draftSheet || draftSheet.getLastRow() < 2) return [];
+
+  const unq = (v) => String(v === undefined || v === null ? "" : v).replace(/^'/, "").trim();
+  const rows = draftSheet.getDataRange().getValues();
+  const out = [];
+  for (let i = rows.length - 1; i >= 1; i--) {
+    const r = rows[i];
+    const issue = unq(r[0]);
+    const subject = unq(r[1]);
+    if (!issue && !subject) continue;
+    const status = unq(r[3]).toLowerCase() || "draft";
+    const sentAt = r[4] instanceof Date ? r[4].toISOString() : unq(r[4]);
+    const createdAt = r[5] instanceof Date ? r[5].toISOString() : unq(r[5]);
+    const scheduledAt = r[6] instanceof Date ? r[6].toISOString() : unq(r[6]);
+    const sentCount = Number(unq(r[7]) || 0);
+    let slug = "";
+    try {
+      const pkg = r[8] ? JSON.parse(unq(r[8])) : null;
+      if (pkg && pkg.slug) slug = pkg.slug;
+    } catch (_) {}
+
+    out.push({
+      rowNumber: i + 1,
+      issue: issue.padStart(2, "0"),
+      subject: subject,
+      status: status, // "draft" | "scheduled" | "sent"
+      createdAt: createdAt || sentAt || "",
+      scheduledAt: scheduledAt || "",
+      sentAt: sentAt || "",
+      sentCount: sentCount,
+      completed: status === "sent",
+      slug: slug
+    });
+  }
+  return out;
+}
+
+function handleGetNewsletterRecords() {
+  return jsonResponse({
+    ok: true,
+    records: buildNewsletterRecordsList()
+  });
+}
+
+function handleScheduleNewsletter(payload) {
+  const issueStr = String(payload.issue || "01").padStart(2, "0").slice(0, 10);
+  const subject = String(payload.subject || `${HUB_CONFIG.NEWSLETTER_TITLE} 第 ${issueStr} 期`).trim();
+  const content = String(payload.content || "").trim();
+  const scheduledAtRaw = String(payload.scheduledAt || "").trim();
+  if (!content) {
+    return jsonResponse({ ok: false, message: "請先準備好電子報內容再設定排程" });
+  }
+  const schedDate = new Date(scheduledAtRaw);
+  if (isNaN(schedDate.getTime())) {
+    return jsonResponse({ ok: false, message: "請選擇有效的預定派送日期與時間" });
+  }
+  if (schedDate.getTime() < Date.now() - 60000) {
+    return jsonResponse({ ok: false, message: "預定派送時間必須晚於現在時間" });
+  }
+
+  const nowIso = new Date().toISOString();
+  const schedIso = schedDate.toISOString();
+  const sitePkg = payload.slug && payload.rawMd ? JSON.stringify({ slug: payload.slug, rawMd: payload.rawMd }) : "";
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(8000);
+  try {
+    const draftSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ISSUES);
+    const rows = draftSheet.getDataRange().getValues();
+    let updatedExisting = false;
+    for (let i = rows.length - 1; i >= 1; i--) {
+      const rIssue = String(rows[i][0] || "").replace(/^'/, "").trim().padStart(2, "0");
+      const rStatus = String(rows[i][3] || "").replace(/^'/, "").trim().toLowerCase();
+      if (rIssue === issueStr && rStatus !== "sent") {
+        const prevCreated = rows[i][5] ? String(rows[i][5]).replace(/^'/, "") : nowIso;
+        const range = draftSheet.getRange(i + 1, 1, 1, 9);
+        range.setNumberFormat("@");
+        range.setValues([
+          [
+            safeCell(issueStr, 12),
+            safeCell(subject, 200),
+            safeCell(content, 45000),
+            "scheduled",
+            "",
+            safeCell(prevCreated, 40),
+            safeCell(schedIso, 40),
+            "0",
+            safeCell(sitePkg, 45000)
+          ]
+        ]);
+        updatedExisting = true;
+        break;
+      }
+    }
+    if (!updatedExisting) {
+      const nextRow = draftSheet.getLastRow() + 1;
+      const range = draftSheet.getRange(nextRow, 1, 1, 9);
+      range.setNumberFormat("@");
+      range.setValues([
+        [
+          safeCell(issueStr, 12),
+          safeCell(subject, 200),
+          safeCell(content, 45000),
+          "scheduled",
+          "",
+          safeCell(nowIso, 40),
+          safeCell(schedIso, 40),
+          "0",
+          safeCell(sitePkg, 45000)
+        ]
+      ]);
+    }
+    ensureNewsletterScheduleTrigger(true);
+  } finally {
+    lock.releaseLock();
+  }
+
+  const tz = Session.getScriptTimeZone() || "Asia/Taipei";
+  const humanTime = Utilities.formatDate(schedDate, tz, "yyyy/MM/dd HH:mm");
+  return jsonResponse({
+    ok: true,
+    records: buildNewsletterRecordsList(),
+    message: `⏰ 已排定第 ${issueStr} 期於 ${humanTime} 自動上傳網站並派送給有效訂戶！`
+  });
+}
+
+function handleCancelNewsletterSchedule(payload) {
+  const rowNum = Number(payload.rowNumber || 0);
+  const issueTarget = String(payload.issue || "").padStart(2, "0");
+  const lock = LockService.getScriptLock();
+  lock.waitLock(8000);
+  try {
+    const draftSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_ISSUES);
+    if (draftSheet && draftSheet.getLastRow() >= 2) {
+      const rows = draftSheet.getDataRange().getValues();
+      let stillScheduled = 0;
+      for (let i = 1; i < rows.length; i++) {
+        const curRow = i + 1;
+        const rIssue = String(rows[i][0] || "").replace(/^'/, "").trim().padStart(2, "0");
+        const rStatus = String(rows[i][3] || "").replace(/^'/, "").trim().toLowerCase();
+        if (rStatus === "scheduled" && (curRow === rowNum || (!rowNum && rIssue === issueTarget))) {
+          draftSheet.getRange(curRow, 4).setNumberFormat("@").setValue("draft");
+          draftSheet.getRange(curRow, 7).setNumberFormat("@").setValue("");
+        } else if (rStatus === "scheduled") {
+          stillScheduled++;
+        }
+      }
+      if (stillScheduled === 0) {
+        ensureNewsletterScheduleTrigger(false);
+      }
+    }
+  } finally {
+    lock.releaseLock();
+  }
+  return jsonResponse({
+    ok: true,
+    records: buildNewsletterRecordsList(),
+    message: "已取消排程，恢復為草稿狀態。"
+  });
+}
+
+/**
+ * 時間觸發器自動執行：時間到達時自動將電子報上傳發佈至網站，並群發給所有有效訂戶
+ */
+function processScheduledNewsletters() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) return;
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const draftSheet = ss.getSheetByName(SHEET_ISSUES);
+    const subSheet = ss.getSheetByName(SHEET_SUBSCRIBERS);
+    if (!draftSheet || draftSheet.getLastRow() < 2) {
+      ensureNewsletterScheduleTrigger(false);
+      return;
+    }
+
+    const rows = draftSheet.getDataRange().getValues();
+    const nowMs = Date.now();
+    let remainingScheduled = 0;
+
+    for (let i = 1; i < rows.length; i++) {
+      const status = String(rows[i][3] || "").replace(/^'/, "").trim().toLowerCase();
+      if (status !== "scheduled") continue;
+
+      const schedRaw = rows[i][6] instanceof Date ? rows[i][6].toISOString() : String(rows[i][6] || "").replace(/^'/, "").trim();
+      const schedTime = new Date(schedRaw).getTime();
+      if (isNaN(schedTime) || schedTime > nowMs) {
+        remainingScheduled++;
+        continue;
+      }
+
+      const subject = String(rows[i][1] || "").replace(/^'/, "").trim();
+      const content = String(rows[i][2] || "").replace(/^'/, "").trim();
+      const pkgRaw = String(rows[i][8] || "").replace(/^'/, "").trim();
+
+      // 1. 若附帶網站文章封包且已設定 GITHUB_PAT，同步自動上傳發佈該期電子報至公開網站
+      if (pkgRaw && HUB_CONFIG.GITHUB_PAT) {
+        try {
+          const pkg = JSON.parse(pkgRaw);
+          if (pkg && pkg.slug && pkg.rawMd) {
+            const targetPath = `content/letters/${pkg.slug}.md`;
+            const manifest = ghBuildUpdatedManifest({ path: targetPath, rawMd: pkg.rawMd });
+            ghAtomicCommit(`scheduled-newsletter: publish ${pkg.slug}`, [
+              { path: targetPath, contentUtf8: pkg.rawMd },
+              { path: "content/manifest.json", contentUtf8: JSON.stringify(manifest, null, 2) + "\n" }
+            ]);
+          }
+        } catch (_) {}
+      }
+
+      // 2. 群發給所有 active 有效訂戶
+      const subs = subSheet
+        ? subSheet
+            .getDataRange()
+            .getValues()
+            .slice(1)
+            .filter((r) => String(r[1] || "").replace(/^'/, "").trim() === "active")
+        : [];
+
+      if (subs.length > 0 && content) {
+        const rendered = renderNewsletterEmailBodies(content);
+        const scriptUrl = ScriptApp.getService().getUrl();
+        const siteBase = String(HUB_CONFIG.SITE_URL || "").replace(/\/+$/, "");
+        subs.forEach((sub) => {
+          const email = String(sub[0] || "").replace(/^'/, "").trim();
+          const token = String(sub[4] || "").replace(/^'/, "").trim();
+          if (!email) return;
+          const unsubUrl = `${scriptUrl}?action=unsubscribe&email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
+          const htmlMail = buildWrappedNewsletterHtml(rendered.innerHtml, unsubUrl, false);
+          const plainFallback = `${rendered.plainText}\n\n——\n線上閱讀：${siteBase}/#/letters\n取消訂閱：${unsubUrl}`;
+          GmailApp.sendEmail(email, subject, plainFallback, {
+            name: HUB_CONFIG.SENDER_NAME,
+            htmlBody: htmlMail
+          });
+        });
+      }
+
+      const rowNum = i + 1;
+      draftSheet.getRange(rowNum, 4).setNumberFormat("@").setValue("sent");
+      draftSheet.getRange(rowNum, 5).setNumberFormat("@").setValue(new Date().toISOString());
+      draftSheet.getRange(rowNum, 8).setNumberFormat("@").setValue(String(subs.length));
+    }
+
+    if (remainingScheduled === 0) {
+      ensureNewsletterScheduleTrigger(false);
+    }
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**
@@ -1773,6 +2081,7 @@ function composeMdWithFrontmatter(meta, body) {
     "links",
     "resourceLabel",
     "resourceUrl",
+    "resources",
     "summary"
   ];
   const lines = ["---"];
@@ -1912,6 +2221,14 @@ function ghBuildUpdatedManifest(overrideItem, deletedPath) {
         entry.resourceUrl = meta.resourceUrl;
         entry.resourceLabel = meta.resourceLabel || "開啟本篇附屬教材／資料庫";
       }
+      if (meta.resources) {
+        try {
+          const parsedRes = JSON.parse(meta.resources);
+          if (Array.isArray(parsedRes) && parsedRes.length > 0) {
+            entry.resources = parsedRes;
+          }
+        } catch (_) {}
+      }
       items.push(entry);
     });
   });
@@ -1922,6 +2239,123 @@ function ghBuildUpdatedManifest(overrideItem, deletedPath) {
     count: items.length,
     items: items
   };
+}
+
+function getOrCreateMaterialsFolderId() {
+  const rootId = String(HUB_CONFIG.DRIVE_CONTENT_FOLDER_ID || "").trim();
+  const parent = rootId ? DriveApp.getFolderById(rootId) : DriveApp.getRootFolder();
+  const iter = parent.getFoldersByName("AttachedMaterials");
+  if (iter.hasNext()) {
+    return iter.next().getId();
+  }
+  return parent.createFolder("AttachedMaterials").getId();
+}
+
+const MAX_RESOURCE_BYTES = 200 * 1024 * 1024; // 200 MB
+const BLOCKED_RESOURCE_EXTS = {
+  ".exe": 1, ".bat": 1, ".cmd": 1, ".sh": 1, ".msi": 1, ".dll": 1, ".scr": 1, ".com": 1, ".vbs": 1
+};
+
+function handleInitResourceResumableUpload(data) {
+  const rawName = String(data.filename || "material.bin").trim();
+  const sizeBytes = Number(data.sizeBytes || 0);
+  if (sizeBytes <= 0) {
+    return jsonResponse({ ok: false, message: "檔案大小為 0，無法上傳" });
+  }
+  if (sizeBytes > MAX_RESOURCE_BYTES) {
+    return jsonResponse({ ok: false, message: `單一檔案上限為 200 MB（目前檔案 ${(sizeBytes / 1048576).toFixed(1)} MB）` });
+  }
+  const dot = rawName.lastIndexOf(".");
+  const ext = dot >= 0 ? rawName.slice(dot).toLowerCase() : "";
+  if (BLOCKED_RESOURCE_EXTS[ext]) {
+    return jsonResponse({ ok: false, message: `基於資安考量，不允許上傳執行檔 (${ext})` });
+  }
+
+  const stem =
+    rawName
+      .slice(0, dot >= 0 ? dot : rawName.length)
+      .replace(/[^\w\u4e00-\u9fa5\-.\s()（）【】]+/g, "-")
+      .trim()
+      .slice(0, 80) || "教材檔案";
+  const stamp = Utilities.formatDate(new Date(), "Asia/Taipei", "yyyyMMdd-HHmmss");
+  const finalName = `${stem}-${stamp}${ext}`;
+  const mimeType = String(data.mimeType || "application/octet-stream").trim() || "application/octet-stream";
+  const clientOrigin = String(data.origin || HUB_CONFIG.SITE_URL || "https://deediaoyeh.github.io").replace(/\/+$/, "");
+
+  const folderId = getOrCreateMaterialsFolderId();
+  const initHeaders = {
+    Authorization: "Bearer " + ScriptApp.getOAuthToken(),
+    "X-Upload-Content-Type": mimeType,
+    "X-Upload-Content-Length": String(sizeBytes)
+  };
+  if (/^https?:\/\//i.test(clientOrigin)) {
+    initHeaders.Origin = clientOrigin;
+  }
+
+  const res = UrlFetchApp.fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable", {
+    method: "post",
+    contentType: "application/json; charset=UTF-8",
+    headers: initHeaders,
+    payload: JSON.stringify({
+      name: finalName,
+      parents: [folderId]
+    }),
+    muteHttpExceptions: true
+  });
+
+  const code = res.getResponseCode();
+  if (code < 200 || code >= 300) {
+    return jsonResponse({
+      ok: false,
+      message: `雲端硬碟續傳通道建立失敗 (${code})：${res.getContentText().slice(0, 200)}`
+    });
+  }
+
+  const hdrs = res.getAllHeaders ? res.getAllHeaders() : res.getHeaders();
+  let sessionUri = "";
+  Object.keys(hdrs || {}).forEach((k) => {
+    if (k.toLowerCase() === "location") {
+      sessionUri = Array.isArray(hdrs[k]) ? hdrs[k][0] : hdrs[k];
+    }
+  });
+
+  if (!sessionUri) {
+    return jsonResponse({ ok: false, message: "未取得 Google Drive 上傳通道網址 (Location)" });
+  }
+
+  return jsonResponse({
+    ok: true,
+    sessionUri: sessionUri,
+    finalName: finalName,
+    displayLabel: rawName,
+    ext: ext.replace(/^\./, "").toUpperCase() || "FILE"
+  });
+}
+
+function handleFinalizeResourceUpload(data) {
+  const fileId = String(data.fileId || "").trim();
+  if (!fileId) return jsonResponse({ ok: false, message: "缺少雲端硬碟檔案 ID" });
+
+  const file = DriveApp.getFileById(fileId);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  const sz = file.getSize() || Number(data.sizeBytes || 0);
+  const rawLabel = String(data.displayLabel || file.getName() || "附屬教材").trim();
+  const dot = rawLabel.lastIndexOf(".");
+  const ext = dot >= 0 ? rawLabel.slice(dot + 1).toUpperCase() : "FILE";
+  const szLabel =
+    sz < 1024 ? `${sz} B` : sz < 1048576 ? `${(sz / 1024).toFixed(1)} KB` : `${(sz / 1048576).toFixed(1)} MB`;
+
+  return jsonResponse({
+    ok: true,
+    resource: {
+      fileId: fileId,
+      label: rawLabel,
+      url: `https://drive.google.com/file/d/${fileId}/view?usp=sharing`,
+      downloadUrl: `https://drive.google.com/uc?export=download&id=${fileId}`,
+      sizeLabel: szLabel,
+      ext: ext
+    }
+  });
 }
 
 function handleStudioCloudApi(payload) {
@@ -1995,6 +2429,26 @@ function handleStudioCloudApi(payload) {
 
     if (method === "POST" && subPath === "/newsletter/send-live") {
       return handleSendLiveNewsletterFromStudio(data);
+    }
+
+    if (method === "GET" && subPath === "/newsletter/records") {
+      return handleGetNewsletterRecords();
+    }
+
+    if (method === "POST" && subPath === "/newsletter/schedule") {
+      return handleScheduleNewsletter(data);
+    }
+
+    if (method === "POST" && subPath === "/newsletter/cancel-schedule") {
+      return handleCancelNewsletterSchedule(data);
+    }
+
+    if (method === "POST" && subPath === "/resources/init-upload") {
+      return handleInitResourceResumableUpload(data);
+    }
+
+    if (method === "POST" && subPath === "/resources/finalize-upload") {
+      return handleFinalizeResourceUpload(data);
     }
 
     if (method === "GET" && subPath === "/item") {

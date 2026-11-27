@@ -264,6 +264,13 @@ def build_manifest_and_rss():
             if meta.get("resourceUrl", "").strip():
                 entry["resourceUrl"] = meta["resourceUrl"].strip()
                 entry["resourceLabel"] = meta.get("resourceLabel", "").strip() or "開啟本篇附屬教材／資料庫"
+            if meta.get("resources", "").strip():
+                try:
+                    parsed_res = json.loads(meta["resources"])
+                    if isinstance(parsed_res, list) and parsed_res:
+                        entry["resources"] = parsed_res
+                except Exception:
+                    pass
             if "stage" in meta:
                 entry["stage"] = meta["stage"]
             if "noteCode" in meta:

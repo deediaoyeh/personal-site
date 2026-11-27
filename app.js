@@ -1004,16 +1004,7 @@
               <button type="button" class="utility-chip-btn" id="btn-print-handout" title="隱藏網站選單，以乾淨紙本講義格式列印或另存 PDF">🖨️ 列印講義 / PDF</button>
               <span id="article-utility-toast" class="utility-toast-msg mono-label" aria-live="polite"></span>
             </div>
-            ${
-              (meta.resourceUrl || item.resourceUrl || "").trim()
-                ? `<div class="article-resource-callout">
-                    <span class="resource-kicker mono-label">ATTACHED MATERIAL · 本篇附屬教材與資料庫</span>
-                    <a href="${escapeHtml((meta.resourceUrl || item.resourceUrl).trim())}" target="_blank" rel="noopener noreferrer" class="resource-cta-btn">
-                      📂 ${escapeHtml((meta.resourceLabel || item.resourceLabel || "開啟本篇研習教材／資料庫").trim())} ↗
-                    </a>
-                  </div>`
-                : ""
-            }
+            ${renderAttachedResourcesHtml(meta, item)}
           </header>
 
           <div class="prose" id="article-prose">
@@ -1136,6 +1127,63 @@
   function buildShareUrlForItem(item) {
     const baseDir = window.location.origin + window.location.pathname.replace(/\/index\.html$/i, "/").replace(/\/?$/, "/");
     return `${baseDir}s/${encodeURIComponent(item.slug)}.html`;
+  }
+
+  function resolveArticleResources(meta, item) {
+    const list = [];
+    if (Array.isArray(item?.resources) && item.resources.length > 0) {
+      item.resources.forEach((r) => {
+        if (r && r.url) list.push(r);
+      });
+    } else if (meta?.resources) {
+      try {
+        const parsed = JSON.parse(meta.resources);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((r) => {
+            if (r && r.url) list.push(r);
+          });
+        }
+      } catch (_) {}
+    }
+    const legacyUrl = (meta?.resourceUrl || item?.resourceUrl || "").trim();
+    if (legacyUrl && !list.some((r) => r.url === legacyUrl)) {
+      list.push({
+        label: (meta?.resourceLabel || item?.resourceLabel || "開啟本篇研習教材／資料庫").trim(),
+        url: legacyUrl,
+        ext: "LINK",
+        sizeLabel: ""
+      });
+    }
+    return list;
+  }
+
+  function renderAttachedResourcesHtml(meta, item) {
+    const list = resolveArticleResources(meta, item);
+    if (!list.length) return "";
+    const countBadge = list.length > 1 ? `（共 ${list.length} 份教材與檔案）` : "";
+    return `
+      <div class="article-resource-callout">
+        <div class="resource-callout-head">
+          <span class="resource-kicker mono-label">ATTACHED MATERIALS · 本篇附屬教材與資料庫${escapeHtml(countBadge)}</span>
+        </div>
+        <div class="resource-cta-list">
+          ${list
+            .map((r) => {
+              const metaBadge = [r.ext && r.ext !== "LINK" ? r.ext : "", r.sizeLabel || ""].filter(Boolean).join(" · ");
+              const isLocalUpload = String(r.url || "").startsWith("./assets/uploads/");
+              const dlAttr = isLocalUpload ? ` download="${escapeHtml(r.label || "")}"` : "";
+              return `
+                <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener noreferrer"${dlAttr} class="resource-cta-btn">
+                  <span>📂 ${escapeHtml(r.label || "開啟教材檔案")}</span>
+                  ${metaBadge ? `<span class="resource-meta-tag mono-label">${escapeHtml(metaBadge)}</span>` : ""}
+                  <span aria-hidden="true">↗</span>
+                </a>
+              `;
+            })
+            .join("")}
+        </div>
+      </div>
+    `;
   }
 
   function bindArticleUtilitiesAndInteractions(container, item, shareUrl) {
