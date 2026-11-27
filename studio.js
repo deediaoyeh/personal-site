@@ -825,6 +825,15 @@
       btn.addEventListener("click", () => sendNewsletterFromStudio(true, btn));
     });
 
+    // 平板與窄螢幕下切換「即時預覽」與「返回編輯」
+    const contentGrid = document.querySelector(".content-studio-grid");
+    document.getElementById("toggle-tablet-preview-btn")?.addEventListener("click", () => {
+      contentGrid?.classList.add("is-tablet-preview");
+    });
+    document.getElementById("close-tablet-preview-btn")?.addEventListener("click", () => {
+      contentGrid?.classList.remove("is-tablet-preview");
+    });
+
     // Markdown 工具列
     document.querySelectorAll("[data-md]").forEach((btn) => {
       btn.addEventListener("click", () => {

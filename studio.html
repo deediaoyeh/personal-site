@@ -8,16 +8,16 @@
     content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' blob: https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; frame-src 'self' blob: https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self' https://deediao-studio.netlify.app https://raw.githubusercontent.com https://www.googleapis.com https://www.youtube.com https://script.google.com https://script.googleusercontent.com; object-src 'none'; base-uri 'self'; form-action 'self'"
   />
   <title>書齋離線工作台 · Offline Website & HTML Studio</title>
-  <link rel="stylesheet" href="./styles.css?v=20261127051652" />
-  <link rel="stylesheet" href="./theme.custom.css?v=20261127051652" />
-  <link rel="stylesheet" href="./studio.css?v=20261127051652" />
+  <link rel="stylesheet" href="./styles.css?v=20261127054435" />
+  <link rel="stylesheet" href="./theme.custom.css?v=20261127054435" />
+  <link rel="stylesheet" href="./studio.css?v=20261127054435" />
 </head>
 <body class="studio-body">
   <!-- 頂部工作台工具列 -->
   <header class="studio-topbar">
     <div class="studio-brand">
       <span class="studio-badge mono-label">OFFLINE STUDIO</span>
-      <span id="studio-version-badge" class="studio-version-pill mono-label" title="目前站台版本編號（每次更動前皆自動打包備份，可隨時一鍵回溯）">v1.3.1</span>
+      <span id="studio-version-badge" class="studio-version-pill mono-label" title="目前站台版本編號（每次更動前皆自動打包備份，可隨時一鍵回溯）">v1.3.2</span>
       <strong class="studio-title">書齋離線編輯工作台</strong>
       <span id="studio-status" class="studio-status">本機直寫模式 · 斷網可用</span>
     </div>
@@ -54,10 +54,10 @@
               <button type="button" class="mini-filter" data-filter-type="letter">電子報</button>
             </div>
             <div class="new-item-actions">
-              <button type="button" class="studio-btn studio-btn-outline full-w" id="new-essay-btn">＋ 新增長文</button>
-              <button type="button" class="studio-btn studio-btn-outline full-w" id="new-note-btn">＋ 新增筆記</button>
-              <button type="button" class="studio-btn studio-btn-outline full-w" id="new-letter-btn">＋ 新增電子報</button>
-              <button type="button" class="studio-btn studio-btn-primary full-w" id="auto-compile-letter-btn" title="自動抓取最新 1 篇長文＋3 則筆記生成本期雙週電子報草稿">✨ 自動彙整本期電子報</button>
+              <button type="button" class="studio-btn studio-btn-outline full-w" id="new-essay-btn">＋ 長文</button>
+              <button type="button" class="studio-btn studio-btn-outline full-w" id="new-note-btn">＋ 筆記</button>
+              <button type="button" class="studio-btn studio-btn-outline full-w" id="new-letter-btn">＋ 電子報</button>
+              <button type="button" class="studio-btn studio-btn-primary full-w span-all-cols" id="auto-compile-letter-btn" title="自動抓取最新 1 篇長文＋3 則筆記生成本期雙週電子報草稿">✨ 自動彙整本期電子報</button>
             </div>
             <input type="search" id="sidebar-search" class="studio-field-input" placeholder="篩選標題或標籤⋯" />
           </div>
@@ -167,6 +167,7 @@
                 <option value="">＋ 插入館藏雙向連結 [[...]]</option>
               </select>
             </div>
+            <button type="button" id="toggle-tablet-preview-btn" class="tool-btn tablet-only-btn">👁 預覽</button>
             <button type="button" id="delete-doc-btn" class="tool-btn danger-btn">刪除此篇</button>
           </div>
 
@@ -222,7 +223,10 @@
         <div class="preview-pane">
           <div class="preview-pane-header mono-label">
             <span>LIVE TYPOGRAPHY PREVIEW · 即時書齋排版預覽</span>
-            <span id="word-count-indicator">0 字</span>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <span id="word-count-indicator">0 字</span>
+              <button type="button" id="close-tablet-preview-btn" class="tool-btn tablet-only-btn">← 返回編輯</button>
+            </div>
           </div>
           <div class="preview-scroll">
             <article class="preview-article-wrap">
@@ -607,7 +611,7 @@
           </p>
 
           <div class="cloud-endpoints-box mono-label">
-            <div>目前站台版本: <strong id="display-site-version">v1.3.1</strong>（變更前自動備份於 <code>backups/personal-site/</code>）</div>
+            <div>目前站台版本: <strong id="display-site-version">v1.3.2</strong>（變更前自動備份於 <code>backups/personal-site/</code>）</div>
             <div>GitHub 倉庫網址: <strong id="display-github-repo">https://github.com/deediaoyeh/personal-site</strong></div>
             <div>GitHub Pages 主站: <strong id="display-github-pages">https://deediaoyeh.github.io/personal-site/</strong></div>
             <div>Netlify 備份站網址: <strong>https://deediao-studio.netlify.app</strong></div>
@@ -879,10 +883,10 @@
     </div>
   </div>
 
-  <script src="./site.config.js?v=20261127051652"></script>
-  <script src="./studio-cloud-client.js?v=20261127051652"></script>
-  <script src="./studio.js?v=20261127051652"></script>
-  <script src="./studio-media.js?v=20261127051652"></script>
-  <script src="./studio-analytics.js?v=20261127051652"></script>
+  <script src="./site.config.js?v=20261127054435"></script>
+  <script src="./studio-cloud-client.js?v=20261127054435"></script>
+  <script src="./studio.js?v=20261127054435"></script>
+  <script src="./studio-media.js?v=20261127054435"></script>
+  <script src="./studio-analytics.js?v=20261127054435"></script>
 </body>
 </html>
