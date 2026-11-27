@@ -1,6 +1,5 @@
 /**
  * 網站全域設定檔 (site.config.js)
- * 可透過離線編輯工作台 (http://localhost:8788/studio.html) 視覺化修改，或直接編輯此檔案。
  */
 window.SITE_CONFIG = {
   "brand": {
