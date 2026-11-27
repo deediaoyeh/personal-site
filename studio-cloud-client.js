@@ -216,10 +216,13 @@
         </p>
 
         <form id="cloud-login-form" class="cloud-gate-form" autocomplete="off">
-          <label class="cloud-gate-field">
-            <span>第一因素：主管理密碼 (Master Passphrase)</span>
-            <input type="password" id="cloud-login-pw" required autofocus placeholder="輸入主管理密碼⋯" />
-          </label>
+          <div class="cloud-gate-field">
+            <label for="cloud-login-pw">第一因素：主管理密碼 (Master Passphrase)</label>
+            <div class="pw-input-wrap">
+              <input type="password" id="cloud-login-pw" required autofocus placeholder="輸入主管理密碼⋯" spellcheck="false" autocapitalize="off" />
+              <button type="button" id="toggle-cloud-pw-btn" class="pw-toggle-btn" aria-pressed="false" title="切換顯示或隱藏輸入的密碼文字">顯示密碼</button>
+            </div>
+          </div>
           <label class="cloud-gate-field">
             <span>第二因素：6 位數動態驗證碼（或單次緊急恢復碼）</span>
             <input type="text" id="cloud-login-2fa" required placeholder="6 位數驗證碼 或 XXXX-XXXX-XXXX" class="cloud-code-input" />
@@ -241,6 +244,22 @@
 
     requestAnimationFrame(() => {
       document.getElementById("cloud-login-pw")?.focus();
+    });
+
+    const pwInputEl = overlay.querySelector("#cloud-login-pw");
+    const pwToggleBtn = overlay.querySelector("#toggle-cloud-pw-btn");
+    pwToggleBtn?.addEventListener("click", () => {
+      if (!pwInputEl) return;
+      const showPlain = pwInputEl.type === "password";
+      pwInputEl.type = showPlain ? "text" : "password";
+      pwToggleBtn.textContent = showPlain ? "隱藏密碼" : "顯示密碼";
+      pwToggleBtn.setAttribute("aria-pressed", showPlain ? "true" : "false");
+      pwToggleBtn.classList.toggle("is-showing", showPlain);
+      pwInputEl.focus();
+      const len = pwInputEl.value.length;
+      try {
+        pwInputEl.setSelectionRange(len, len);
+      } catch (_) {}
     });
 
     const form = overlay.querySelector("#cloud-login-form");

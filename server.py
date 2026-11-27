@@ -612,14 +612,20 @@ def build_auth_gate_html(nonce: str) -> str:
         </div>
 
         <form id="setup-form" class="gate-form" autocomplete="off">
-          <label class="gate-field">
-            <span>步驟 2：設定主管理密碼（至少 10 碼，需含英文與數字/符號）</span>
-            <input type="password" id="setup-pw" required minlength="10" placeholder="輸入高強度主管理密碼⋯" />
-          </label>
-          <label class="gate-field">
-            <span>再次確認主管理密碼</span>
-            <input type="password" id="setup-pw2" required minlength="10" placeholder="再次輸入相同主密碼⋯" />
-          </label>
+          <div class="gate-field">
+            <label for="setup-pw">步驟 2：設定主管理密碼（至少 10 碼，需含英文與數字/符號）</label>
+            <div class="pw-wrap">
+              <input type="password" id="setup-pw" required minlength="10" placeholder="輸入高強度主管理密碼⋯" spellcheck="false" autocapitalize="off" />
+              <button type="button" class="pw-toggle" data-toggle-pw="setup-pw">顯示密碼</button>
+            </div>
+          </div>
+          <div class="gate-field">
+            <label for="setup-pw2">再次確認主管理密碼</label>
+            <div class="pw-wrap">
+              <input type="password" id="setup-pw2" required minlength="10" placeholder="再次輸入相同主密碼⋯" spellcheck="false" autocapitalize="off" />
+              <button type="button" class="pw-toggle" data-toggle-pw="setup-pw2">顯示密碼</button>
+            </div>
+          </div>
           <label class="gate-field">
             <span>步驟 3：輸入驗證器 App 顯示的 6 位數動態驗證碼</span>
             <input type="text" id="setup-totp" inputmode="numeric" pattern="[0-9 ]*" maxlength="8" required placeholder="例如 123456" class="code-input" />
@@ -645,10 +651,13 @@ def build_auth_gate_html(nonce: str) -> str:
         <p class="gate-desc">此區域受雙重密碼學驗證保護（PBKDF2-SHA256 ＋ TOTP 動態驗證碼）。連續驗證失敗 5 次將自動鎖定 15 分鐘。</p>
 
         <form id="login-form" class="gate-form" autocomplete="off">
-          <label class="gate-field">
-            <span>第一因素：主管理密碼 (Master Passphrase)</span>
-            <input type="password" id="login-pw" required autofocus placeholder="輸入主管理密碼⋯" />
-          </label>
+          <div class="gate-field">
+            <label for="login-pw">第一因素：主管理密碼 (Master Passphrase)</label>
+            <div class="pw-wrap">
+              <input type="password" id="login-pw" required autofocus placeholder="輸入主管理密碼⋯" spellcheck="false" autocapitalize="off" />
+              <button type="button" class="pw-toggle" data-toggle-pw="login-pw">顯示密碼</button>
+            </div>
+          </div>
           <label class="gate-field">
             <span>第二因素：6 位數動態驗證碼（或單次緊急恢復碼）</span>
             <input type="text" id="login-2fa" required placeholder="6 位數驗證碼 或 XXXX-XXXX-XXXX" class="code-input" />
@@ -702,6 +711,15 @@ def build_auth_gate_html(nonce: str) -> str:
       border-radius: 2px; color: #1d1c19; outline: none; font-family: inherit;
     }}
     .gate-field input:focus {{ border-color: #6e5039; }}
+    .pw-wrap {{ position: relative; display: flex; align-items: center; width: 100%; }}
+    .pw-wrap input {{ width: 100%; padding-right: 84px; }}
+    .pw-toggle {{
+      position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+      background: #faf8f4; border: 1px solid rgba(29,28,25,0.24); color: #534f46;
+      font-size: 0.75rem; padding: 4px 9px; border-radius: 2px; cursor: pointer; font-family: inherit;
+    }}
+    .pw-toggle:hover {{ border-color: #6e5039; color: #1d1c19; }}
+    .pw-toggle.is-showing {{ background: rgba(110,80,57,0.12); border-color: #6e5039; color: #6e5039; font-weight: 500; }}
     .code-input {{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important; letter-spacing: 0.14em; font-size: 1.05rem !important; }}
     .gate-error {{ color: #9e3f33; font-size: 0.84rem; min-height: 1.2em; }}
     .gate-btn {{
@@ -726,6 +744,17 @@ def build_auth_gate_html(nonce: str) -> str:
   </main>
   <script nonce="{nonce}">
     (function() {{
+      document.querySelectorAll("[data-toggle-pw]").forEach((btn) => {{
+        btn.addEventListener("click", () => {{
+          const inp = document.getElementById(btn.getAttribute("data-toggle-pw"));
+          if (!inp) return;
+          const show = inp.type === "password";
+          inp.type = show ? "text" : "password";
+          btn.textContent = show ? "隱藏密碼" : "顯示密碼";
+          btn.classList.toggle("is-showing", show);
+          inp.focus();
+        }});
+      }});
       const errEl = document.getElementById("gate-error");
       const setupForm = document.getElementById("setup-form");
       if (setupForm) {{
