@@ -47,6 +47,12 @@
       loadAnalyticsData();
     });
 
+    // 背景安靜檢查讀者新回應：工作台開啟後與每 5 分鐘一次，於「站台點閱」分頁標籤顯示紅色提醒
+    setTimeout(() => loadAnalyticsData({ silent: true }), 2500);
+    setInterval(() => {
+      if (!document.hidden) loadAnalyticsData({ silent: true });
+    }, 5 * 60 * 1000);
+
     document.getElementById("analytics-test-ping-btn")?.addEventListener("click", async () => {
       const btn = document.getElementById("analytics-test-ping-btn");
       btn.disabled = true;
@@ -170,13 +176,16 @@
     el.textContent = msg;
   }
 
-  async function loadAnalyticsData() {
+  async function loadAnalyticsData(opts = {}) {
+    const silent = !!opts.silent;
     if (isLoading) return;
     isLoading = true;
     const refreshBtn = document.getElementById("analytics-refresh-btn");
     if (refreshBtn) refreshBtn.disabled = true;
-    showBanner("");
-    document.getElementById("analytics-updated-at").textContent = "正在從雲端安全調閱數據⋯";
+    if (!silent) {
+      showBanner("");
+      document.getElementById("analytics-updated-at").textContent = "正在從雲端安全調閱數據⋯";
+    }
 
     try {
       const res = await fetch(`/api/studio/analytics?t=${Date.now()}`);
@@ -190,8 +199,10 @@
       const tStr = new Date().toLocaleTimeString("zh-TW", { hour12: false });
       document.getElementById("analytics-updated-at").textContent = `最後更新：${tStr}`;
     } catch (err) {
-      showBanner(`無法載入點閱統計：${err.message}`, true);
-      document.getElementById("analytics-updated-at").textContent = "讀取失敗";
+      if (!silent) {
+        showBanner(`無法載入點閱統計：${err.message}`, true);
+        document.getElementById("analytics-updated-at").textContent = "讀取失敗";
+      }
     } finally {
       isLoading = false;
       if (refreshBtn) refreshBtn.disabled = false;
@@ -394,24 +405,98 @@
       .join("");
   }
 
+  const FEEDBACK_SEEN_KEY = "deediao_owner_feedback_seen_at";
+
+  function feedbackTimeMs(f) {
+    const t = Date.parse(f && f.timestamp);
+    return Number.isFinite(t) ? t : 0;
+  }
+
+  function getFeedbackSeenAt() {
+    return Number(localStorage.getItem(FEEDBACK_SEEN_KEY) || 0);
+  }
+
+  function getNewFeedbacks(feedbacks) {
+    const seenAt = getFeedbackSeenAt();
+    return (feedbacks || []).filter((f) => feedbackTimeMs(f) > seenAt);
+  }
+
+  function updateFeedbackTabBadge(newCount) {
+    const badge = document.getElementById("analytics-tab-badge");
+    if (!badge) return;
+    if (newCount > 0) {
+      badge.hidden = false;
+      badge.textContent = `${newCount} 則新回應`;
+      badge.title = `有 ${newCount} 則讀者新回應尚未查看`;
+    } else {
+      badge.hidden = true;
+      badge.textContent = "";
+    }
+  }
+
+  function markFeedbacksSeen() {
+    const all = latestData?.readerFeedbacks || [];
+    const newest = all.reduce((m, f) => Math.max(m, feedbackTimeMs(f)), 0);
+    localStorage.setItem(FEEDBACK_SEEN_KEY, String(Math.max(newest, Date.now())));
+    renderFeedbacksSection(all, latestData?.totals || {});
+    bridge()?.setStatus("✓ 已將讀者回應標記為已讀", "is-saved");
+  }
+
   function renderFeedbacksSection(feedbacks, totals) {
     const summaryEl = document.getElementById("feedback-status-summary");
     const tbody = document.getElementById("analytics-feedbacks-tbody");
+    const alertEl = document.getElementById("feedback-new-alert");
+    const boxEl = document.getElementById("feedback-inbox-box");
+    const sorted = [...(feedbacks || [])].sort((a, b) => feedbackTimeMs(b) - feedbackTimeMs(a));
+    const fresh = getNewFeedbacks(sorted);
+    const freshSet = new Set(fresh);
+
+    updateFeedbackTabBadge(fresh.length);
+    if (boxEl) boxEl.classList.toggle("has-new", fresh.length > 0);
+
     if (summaryEl) {
       summaryEl.textContent = `全站累計點亮共鳴 ${fmtNum(totals.totalResonances || 0)} 次 · 收到私密回饋 ${fmtNum(
-        totals.totalFeedbacks ?? feedbacks.length
-      )} 則`;
+        totals.totalFeedbacks ?? sorted.length
+      )} 則${fresh.length ? ` · 其中 ${fresh.length} 則尚未讀` : ""}`;
     }
+
+    if (alertEl) {
+      if (fresh.length) {
+        const latest = fresh[0];
+        const who = latest.sender || "一位匿名讀者";
+        const where = latest.title || latest.route || "你的文章";
+        const preview = String(latest.message || "").replace(/\s+/g, " ").slice(0, 60);
+        alertEl.hidden = false;
+        alertEl.innerHTML = `
+          <div class="feedback-new-alert-icon" aria-hidden="true">🔔</div>
+          <div class="feedback-new-alert-body">
+            <div class="feedback-new-alert-title">有讀者回應你了！共 ${fresh.length} 則新的悄悄話尚未查看</div>
+            <div class="feedback-new-alert-desc">最新一則：<strong>${esc(who)}</strong> 在〈${esc(where)}〉留言（${esc(
+              formatVisitTime(latest.timestamp)
+            )}）${preview ? `：「${esc(preview)}${String(latest.message || "").length > 60 ? "⋯" : ""}」` : ""}</div>
+          </div>
+          <button type="button" class="studio-btn studio-btn-primary feedback-mark-read-btn">✓ 我看過了，標記已讀</button>
+        `;
+        alertEl.querySelector(".feedback-mark-read-btn")?.addEventListener("click", markFeedbacksSeen);
+      } else {
+        alertEl.hidden = true;
+        alertEl.innerHTML = "";
+      }
+    }
+
     if (!tbody) return;
-    if (!feedbacks.length) {
+    if (!sorted.length) {
       tbody.innerHTML = `<tr><td colspan="4" style="color:var(--ink-muted); text-align:center; padding:22px;">目前尚無讀者悄悄話回饋（讀者於文章底部送出後將私密顯示於此）</td></tr>`;
       return;
     }
-    tbody.innerHTML = feedbacks
+    tbody.innerHTML = sorted
       .map((f) => {
+        const isNew = freshSet.has(f);
         return `
-          <tr>
-            <td class="mono-label" style="white-space:nowrap; font-size:0.78rem;">${esc(formatVisitTime(f.timestamp))}</td>
+          <tr class="${isNew ? "feedback-row-new" : ""}">
+            <td class="mono-label" style="white-space:nowrap; font-size:0.78rem;">${
+              isNew ? '<span class="feedback-new-tag">NEW</span>' : ""
+            }${esc(formatVisitTime(f.timestamp))}</td>
             <td><strong>${esc(f.title || f.route)}</strong></td>
             <td class="mono-label" style="font-size:0.8rem; color:var(--accent, #6e5039);">${esc(f.sender || "匿名讀者")}</td>
             <td style="white-space:pre-wrap; line-height:1.6;">${esc(f.message)}</td>
