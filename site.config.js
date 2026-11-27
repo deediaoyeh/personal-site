@@ -1,6 +1,5 @@
 /**
  * 網站全域設定檔 (site.config.js)
- * 可透過離線編輯工作台 (http://localhost:8788/studio.html) 視覺化修改，或直接編輯此檔案。
  */
 window.SITE_CONFIG = {
   "brand": {
@@ -17,12 +16,9 @@ window.SITE_CONFIG = {
     "greeting": "這是一座持續成長的個人知識庫。",
     "lead": "我關注資訊社會種種議題，透過許多不同的型態，長文（Essays）記錄完整的思考、推論過程；筆記（Notes）留存閱讀摘錄與尚未定型的思考碎片；雙週電子報則將這些整理成一封安靜的信，寄到你的信箱。",
     "currentlyExploring": [
-      "AI認知超載",
       "AI協作",
       "自主學習模組",
-      "學習歷程",
-      "法律-民法",
-      "銀齡族群的財務規劃"
+      "學習歷程"
     ]
   },
   "newsletter": {
