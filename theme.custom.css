@@ -1,4 +1,4 @@
-/* 由「書齋離線編輯工作台 (studio.html)」自動產生與管理 */
+/* 由雲端工作台產生 */
 :root,
 [data-theme="paper"] {
   --bg-paper: #f5f2eb;
@@ -11,12 +11,10 @@
   --accent-hover: #1d1c19;
   --accent-moss: #485643;
 }
-
 body {
   font-size: 16px;
-  line-height: 1.8;
+  line-height: 1.85;
 }
-
 .site-shell {
   max-width: 980px;
 }
