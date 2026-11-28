@@ -1,15 +1,15 @@
 /* 由雲端工作台產生 */
 :root,
 [data-theme="paper"] {
-  --bg-paper: #f5f2eb;
-  --bg-subtle: #ece7dd;
-  --bg-elevated: #faf8f4;
-  --ink-primary: #1d1c19;
-  --ink-secondary: #534f46;
-  --ink-muted: #857f73;
-  --accent: #6e5039;
-  --accent-hover: #1d1c19;
-  --accent-moss: #485643;
+  --bg-paper: #ededeb;
+  --bg-subtle: #e2e2df;
+  --bg-elevated: #f5f5f3;
+  --ink-primary: #161616;
+  --ink-secondary: #4a4a48;
+  --ink-muted: #7a7a77;
+  --accent: #383836;
+  --accent-hover: #161616;
+  --accent-moss: #455242;
 }
 body {
   font-size: 16px;
