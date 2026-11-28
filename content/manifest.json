@@ -1,6 +1,6 @@
 {
-  "updatedAt": "2026-11-28T01:05:31Z",
-  "count": 16,
+  "updatedAt": "2026-11-28T02:06:49Z",
+  "count": 17,
   "items": [
     {
       "title": "AntiGravity-查閱資料的應用",
@@ -20,6 +20,34 @@
       "searchText": "最近有一些查資料的需求，所以我就使用這個工具去協助我進入我的雲端硬碟裡面去查找 程序： 需求方提出的需求：文件+圖片 讓AI工具連結我的雲端硬碟 查找的資料以PDF呈現，但是相關文件連結要可以點選 自己點選一次，確認權限正確（需求方要可以看得到） 提供給業務單位彙整 我用了兩種AI 一個是ChatGPT 產出的結果同事很驚艷 另外一個是&nbsp;AntiGravity 串接 Claude的 Sonnet 5.5 (因為我算力用光了，只好善用一些「剩餘資源」） 兩種結果我都蠻滿意的，剛好可以彙整起來 screenshot 20261128010502",
       "stage": "seedling",
       "noteCode": "NOTE · 027"
+    },
+    {
+      "title": "用AI訓練閩南語可行嗎？",
+      "slug": "note-20261128-8",
+      "type": "note",
+      "format": "html",
+      "date": "2026-11-28",
+      "readingTime": "1 min",
+      "summary": "有老師提出使用AI訓練英語已經變得很稀鬆平常，但是訓練閩南語",
+      "tags": [
+        "AI",
+        "工具應用"
+      ],
+      "links": [],
+      "path": "./content/notes/note-20261128-8.md",
+      "searchText": "我不敢確定這個做法是否可行，但至少 AI 提供了一個方向與可行性評估。如果行的話，不妨動手試試看。我把 PDF 檔案附在裡面，上方是我與 AI 的對話內容，有需要的人可以參考。",
+      "resourceUrl": "./assets/uploads/閩南語訓練.pdf",
+      "resourceLabel": "閩南語訓練.pdf",
+      "resources": [
+        {
+          "label": "閩南語訓練.pdf",
+          "url": "./assets/uploads/閩南語訓練.pdf",
+          "sizeLabel": "172.2 KB",
+          "ext": "PDF"
+        }
+      ],
+      "stage": "seedling",
+      "noteCode": "NOTE · 028"
     },
     {
       "title": "AI在人類的知識傳承中會扮演什麼樣的角色？",
